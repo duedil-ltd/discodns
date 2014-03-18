@@ -14,8 +14,7 @@ The zoodns project is written in Go, and uses an extensive library ([miekg/dns](
 
 ````shell
 cd zoodns
-go get
-go build -o build/zoodns *.go
+make
 ````
 
 ### Running
