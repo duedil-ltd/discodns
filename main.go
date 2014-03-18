@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	logger = log.New(os.Stdout, "[duedil-dns] ", log.Ldate|log.Ltime)
+	logger = log.New(os.Stdout, "[zoodns] ", log.Ldate|log.Ltime)
 )
 
 func main() {

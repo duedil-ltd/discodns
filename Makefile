@@ -7,9 +7,9 @@ clean:
 	@echo "✔ Cleaned build"
 
 compile:
-	@echo "● Building to build/duedil-dns"
-	go build -o build/duedil-dns *.go
-	@echo "✔ Successfully built build/duedil-dns"
+	@echo "● Building to build/zoodns"
+	go build -o build/zoodns *.go
+	@echo "✔ Successfully built build/zoodns"
 
 test:
 	@echo -n
