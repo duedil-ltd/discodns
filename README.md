@@ -1,6 +1,6 @@
 
-zoodns (DDNS)
-=================
+zoodns
+======
 
 DueDil's internal DNS system for discovery of named systems. This project acts as a DNS server that proxies any public domain requests to the internet, but responds to `duedil.net.` queries. If a result is not found for a query, it will be forwarded to the internet.
 
@@ -50,8 +50,8 @@ func main() {
         return
     }
 
-    _, err = zk.Create("/dns/net/duedil/foo/A", "10.9.1.5", 0, gozk.WorldACL(gozk.PERM_ALL))
-    _, err = zk.Create("/dns/net/duedil/foo/TXT", "testing", 0, gozk.WorldACL(gozk.PERM_ALL))
+    _, err = zk.Create("/dns/net/duedil/foo/_A", "10.9.1.5", 0, gozk.WorldACL(gozk.PERM_ALL))
+    _, err = zk.Create("/dns/net/duedil/foo/_TXT", "testing", 0, gozk.WorldACL(gozk.PERM_ALL))
 }
 ````
 
