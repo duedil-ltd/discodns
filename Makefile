@@ -2,14 +2,14 @@ all::   clean build
 build:: compile test
 
 clean:
-	@echo "● Cleaning out the build folder"
+	@echo "\033[34m●\033[39m Cleaning out the build folder"
 	rm -rf build/*
-	@echo "✔ Cleaned build"
+	@echo "\033[32m✔\033[39m Cleaned build"
 
 compile:
-	@echo "● Building to build/zoodns"
-	go build -o build/zoodns *.go
-	@echo "✔ Successfully built build/zoodns"
+	@echo "\033[34m●\033[39m Building to build/etcdns"
+	go build -o build/etcdns *.go
+	@echo "\033[32m✔\033[39m Successfully built build/etcdns"
 
 test:
 	@echo -n

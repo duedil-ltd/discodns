@@ -1,5 +1,5 @@
 
-zoodns
+etcdns
 ======
 
 DueDil's internal DNS system for discovery of named systems. This project acts as a DNS server that proxies any public domain requests to the internet, but responds to `duedil.net.` queries. If a result is not found for a query, it will be forwarded to the internet.
@@ -10,10 +10,10 @@ When a `duedil.net.` query is received, the server then parses the query and loo
 
 ### Building
 
-The zoodns project is written in Go, and uses an extensive library ([miekg/dns](https://github.com/miekg/dns)) to provide the actual implementation of the DNS protocol.
+The etcdns project is written in Go, and uses an extensive library ([miekg/dns](https://github.com/miekg/dns)) to provide the actual implementation of the DNS protocol.
 
 ````shell
-cd zoodns
+cd etcdns
 make
 ````
 
@@ -22,8 +22,8 @@ make
 It's as simple as launching the binary to start a DNS server listening on port 53 (tcp+udp) and accepting requests. At the very minimum you need to specify the location of your ZooKeeper cluster.
 
 ````shell
-cd zoodns
-sudo ./build/zoodns --zk zk://127.0.0.1:2181/dns
+cd etcdns
+sudo ./build/etcdns --zk zk://127.0.0.1:2181/dns
 ````
 
 ### Try it out
