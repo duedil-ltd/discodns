@@ -4,6 +4,10 @@ etcdns
 
 A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems.
 
+### Why etcd?
+
+The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with dome very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services should use etcd to public and watch for changes to records and act accordingly.
+
 ## Getting Started
 
 ### Building
