@@ -2,7 +2,7 @@
 etcdns
 ======
 
-A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool for service discovery systems with.
+A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems.
 
 ## Getting Started
 
