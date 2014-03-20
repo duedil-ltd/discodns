@@ -10,56 +10,39 @@ import (
 type Server struct {
 	addr		string
 	port		int
-	etcd	 	etcd.Client
+	etcd	 	*etcd.Client
+	ns			[]string
 	rTimeout	time.Duration
 	wTimeout	time.Duration
 }
 
 type Handler struct {
 	server	*Server
+	net		string
+	dns		*dns.Client
+}
+
+func (h *Handler) DNSClient() *dns.Client {
+	if h.dns == nil {
+		h.dns = &dns.Client{Net: h.net}
+	}
+	return h.dns
 }
 
 func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
 
-	q := req.Question[0]
-	r := &Resolver{etcd: h.server.etcd}
-
-    m := new(dns.Msg)
-	m.SetReply(req)
-
-	if q.Qclass == dns.ClassINET {
-		if q.Qtype == dns.TypeA {
-			logger.Printf("Q: A record for %s", q.Name)
-
-			for _, a := range r.LookupA(q.Name, q.Qclass, q.Qtype) {
-				header := a.Header()
-				logger.Printf("A: %s (TTL %d)", a.A, header.Ttl)
-				m.Answer = append(m.Answer, a)
-			}
-		}
-
-		if q.Qtype == dns.TypeTXT {
-			logger.Printf("Q: TXT record for %s", q.Name)
-
-			for _, a := range r.LookupTXT(q.Name, q.Qclass, q.Qtype) {
-				header := a.Header()
-				logger.Printf("A: %s (TTL %d)", a.Txt[0], header.Ttl)
-				m.Answer = append(m.Answer, a)
-			}
-		}
-
-		if q.Qtype == dns.TypeCNAME {
-			logger.Printf("Q: CNAME record for %s", q.Name)
-
-			for _, a := range r.LookupCNAME(q.Name, q.Qclass, q.Qtype) {
-				header := a.Header()
-				logger.Printf("A: %s (TTL %d)", a.Target, header.Ttl)
-				m.Answer = append(m.Answer, a)
-			}
-		}
+	resolver := &Resolver{
+		etcd: h.server.etcd,
+		dns: h.DNSClient(),
 	}
 
-	response.WriteMsg(m)
+	// Lookup the dns record for the request
+	// This method will add any answers to the message
+	msg := resolver.Lookup(req, h.server.ns)
+
+	if msg != nil {
+		response.WriteMsg(msg)
+	}
 }
 
 func (s *Server) Addr() string {
@@ -68,13 +51,15 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-	handler := &Handler{server: s}
+	tcpDNShandler := &Handler{server: s, net: "tcp"}
 
 	tcpHandler := dns.NewServeMux()
-	tcpHandler.HandleFunc(".", handler.Handle)
+	tcpHandler.HandleFunc(".", tcpDNShandler.Handle)
+
+	udpDNShandler := &Handler{server: s, net: "udp"}
 
 	udpHandler := dns.NewServeMux()
-	udpHandler.HandleFunc(".", handler.Handle)
+	udpHandler.HandleFunc(".", udpDNShandler.Handle)
 
 	tcpServer := &dns.Server{Addr: s.Addr(),
 		Net:          "tcp",

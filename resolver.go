@@ -9,7 +9,51 @@ import (
 )
 
 type Resolver struct {
-    etcd    etcd.Client
+    etcd    *etcd.Client
+    dns     *dns.Client
+}
+
+func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
+    q := req.Question[0]
+
+    msg = new(dns.Msg)
+    msg.SetReply(req)
+
+    if q.Qclass == dns.ClassINET {
+        if q.Qtype == dns.TypeA {
+            for _, a := range r.LookupA(q.Name, q.Qclass, q.Qtype) {
+                msg.Answer = append(msg.Answer, a)
+            }
+        }
+
+        if q.Qtype == dns.TypeTXT {
+            for _, a := range r.LookupTXT(q.Name, q.Qclass, q.Qtype) {
+                msg.Answer = append(msg.Answer, a)
+            }
+        }
+
+        if q.Qtype == dns.TypeCNAME {
+            for _, a := range r.LookupCNAME(q.Name, q.Qclass, q.Qtype) {
+                msg.Answer = append(msg.Answer, a)
+            }
+        }
+    }
+
+    if len(msg.Answer) == 0 {
+        for _, nameserver := range nameservers {
+            r, _, err := r.dns.Exchange(req, nameserver)
+
+            if err != nil {
+                logger.Printf("%s", err)
+                continue
+            }
+
+            msg = r
+            break
+        }
+    }
+
+    return
 }
 
 func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []*dns.A) {
