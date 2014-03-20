@@ -20,18 +20,29 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     msg.SetReply(req)
 
     if q.Qclass == dns.ClassINET {
+
+        // A records
         if q.Qtype == dns.TypeA {
             for _, a := range r.LookupA(q.Name, q.Qclass, q.Qtype) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
 
+        // AAAA records
+        if q.Qtype == dns.TypeAAAA {
+            for _, a := range r.LookupAAAA(q.Name, q.Qclass, q.Qtype) {
+                msg.Answer = append(msg.Answer, a)
+            }
+        }
+
+        // TXT records
         if q.Qtype == dns.TypeTXT {
             for _, a := range r.LookupTXT(q.Name, q.Qclass, q.Qtype) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
 
+        // CNAME records
         if q.Qtype == dns.TypeCNAME {
             for _, a := range r.LookupCNAME(q.Name, q.Qclass, q.Qtype) {
                 msg.Answer = append(msg.Answer, a)
@@ -59,7 +70,7 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
 func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []*dns.A) {
     answers = make([]*dns.A, 0)
 
-    key := nameToKey(name, "/_A")
+    key := nameToKey(name, "/.A")
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
         logger.Printf("Error with etcd: %s", err)
@@ -80,10 +91,34 @@ func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []
     return
 }
 
+func (r *Resolver) LookupAAAA(name string, class uint16, rrtype uint16) (answers []*dns.AAAA) {
+    answers = make([]*dns.AAAA, 0)
+
+    key := nameToKey(name, "/.AAAA")
+    response, err := r.etcd.Get(key, false, false)
+    if err != nil {
+        logger.Printf("Error with etcd: %s", err)
+        return
+    }
+
+    node := response.Node
+
+    ip := net.ParseIP(node.Value)
+    if ip == nil {
+        logger.Fatalf("Failed to parse IP value '%s'", node.Value)
+    }
+
+    answers = make([]*dns.AAAA, 1)
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: rrtype, Ttl: 0}
+    answers[0] = &dns.AAAA{*rr_header, ip}
+
+    return
+}
+
 func (r *Resolver) LookupTXT(name string, class uint16, rrtype uint16) (answers []*dns.TXT) {
     answers = make([]*dns.TXT, 0)
 
-    key := nameToKey(name, "/_TXT")
+    key := nameToKey(name, "/.TXT")
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
         logger.Printf("Error with etcd: %s", err)
@@ -102,7 +137,7 @@ func (r *Resolver) LookupTXT(name string, class uint16, rrtype uint16) (answers 
 func (r *Resolver) LookupCNAME(name string, class uint16, rrtype uint16) (answers []*dns.CNAME) {
     answers = make([]*dns.CNAME, 0)
 
-    key := nameToKey(name, "/_CNAME")
+    key := nameToKey(name, "/.CNAME")
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
         logger.Printf("Error with etcd: %s", err)
