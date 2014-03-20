@@ -34,6 +34,7 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
 	resolver := &Resolver{
 		etcd: h.server.etcd,
 		dns: h.DNSClient(),
+		rTimeout: h.server.rTimeout,
 	}
 
 	// Lookup the dns record for the request
@@ -64,15 +65,15 @@ func (s *Server) Run() {
 	tcpServer := &dns.Server{Addr: s.Addr(),
 		Net:          "tcp",
 		Handler:      tcpHandler,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second}
+		ReadTimeout:  s.rTimeout,
+		WriteTimeout: s.wTimeout}
 
 	udpServer := &dns.Server{Addr: s.Addr(),
 		Net:          "udp",
 		Handler:      udpHandler,
 		UDPSize:      65535,
-		ReadTimeout:  5 * time.Second,
-		WriteTimeout: 5 * time.Second}
+		ReadTimeout:  s.rTimeout,
+		WriteTimeout: s.wTimeout}
 
 	go s.start(udpServer)
 	go s.start(tcpServer)

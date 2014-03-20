@@ -7,6 +7,7 @@ import (
 	"strings"
 	"log"
 	"flag"
+	"time"
 )
 
 var (
@@ -19,12 +20,19 @@ func main() {
 	var port = flag.Int("port", 53, "Port to listen on")
 	var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
 	var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
+	var timeout = flag.String("ns-timeout", "5s", "Default nameserver timeout")
 	flag.Parse()
 
 	// Parse the list of nameservers
 	ns := strings.Split(*nameservers, ",")
 
-	// Connect to ZK (wait for a connection)
+	// Parse the timeout string
+	nsTimeout, err := time.ParseDuration(*timeout)
+	if err != nil {
+		logger.Fatalf("Failed to parse duration '%s'", timeout)
+	}
+
+	// Connect to ETCD (wait for a connection)
 	etcd := etcd.NewClient(strings.Split(*hosts, ","))
 
 	if !etcd.SyncCluster() {
@@ -36,6 +44,8 @@ func main() {
 		addr: *addr,
 		port: *port,
 		etcd: etcd,
+		rTimeout: nsTimeout,
+		wTimeout: nsTimeout,
 		ns: ns}
 
 	server.Run()

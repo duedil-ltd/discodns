@@ -10,8 +10,9 @@ import (
 )
 
 type Resolver struct {
-    etcd    *etcd.Client
-    dns     *dns.Client
+    etcd        *etcd.Client
+    dns         *dns.Client
+    rTimeout   time.Duration
 }
 
 func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
@@ -57,7 +58,7 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
             go r.LookupNameserver(c, req, nameserver)
         }
 
-        timeout := time.After(1 * time.Second)
+        timeout := time.After(r.rTimeout)
         select {
         case result := <-c:
             return result
