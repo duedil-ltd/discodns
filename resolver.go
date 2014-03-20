@@ -6,6 +6,7 @@ import (
     "net"
     "strings"
     "bytes"
+    "time"
 )
 
 type Resolver struct {
@@ -51,20 +52,29 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     }
 
     if len(msg.Answer) == 0 {
+        c := make(chan *dns.Msg)
         for _, nameserver := range nameservers {
-            r, _, err := r.dns.Exchange(req, nameserver)
+            go r.LookupNameserver(c, req, nameserver)
+        }
 
-            if err != nil {
-                logger.Printf("%s", err)
-                continue
-            }
-
-            msg = r
-            break
+        timeout := time.After(1 * time.Second)
+        select {
+        case result := <-c:
+            return result
+        case <-timeout:
+            return
         }
     }
 
     return
+}
+
+func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
+    msg, _, err := r.dns.Exchange(req, ns)
+    if err != nil {
+        return
+    }
+    c <- msg
 }
 
 func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []*dns.A) {
