@@ -24,29 +24,29 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     if q.Qclass == dns.ClassINET {
 
         // A records
-        if q.Qtype == dns.TypeA {
-            for _, a := range r.LookupA(q.Name, q.Qclass, q.Qtype) {
+        if q.Qtype == dns.TypeA || q.Qtype == dns.TypeANY {
+            for _, a := range r.LookupA(q.Name, q.Qclass) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
 
         // AAAA records
-        if q.Qtype == dns.TypeAAAA {
-            for _, a := range r.LookupAAAA(q.Name, q.Qclass, q.Qtype) {
+        if q.Qtype == dns.TypeAAAA || q.Qtype == dns.TypeANY {
+            for _, a := range r.LookupAAAA(q.Name, q.Qclass) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
 
         // TXT records
-        if q.Qtype == dns.TypeTXT {
-            for _, a := range r.LookupTXT(q.Name, q.Qclass, q.Qtype) {
+        if q.Qtype == dns.TypeTXT || q.Qtype == dns.TypeANY {
+            for _, a := range r.LookupTXT(q.Name, q.Qclass) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
 
         // CNAME records
-        if q.Qtype == dns.TypeCNAME {
-            for _, a := range r.LookupCNAME(q.Name, q.Qclass, q.Qtype) {
+        if q.Qtype == dns.TypeCNAME || q.Qtype == dns.TypeANY {
+            for _, a := range r.LookupCNAME(q.Name, q.Qclass) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
@@ -78,7 +78,7 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
-func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []*dns.A) {
+func (r *Resolver) LookupA(name string, class uint16) (answers []*dns.A) {
     answers = make([]*dns.A, 0)
 
     key := nameToKey(name, "/.A")
@@ -96,13 +96,13 @@ func (r *Resolver) LookupA(name string, class uint16, rrtype uint16) (answers []
     }
 
     answers = make([]*dns.A, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: rrtype, Ttl: 0}
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeA, Ttl: 0}
     answers[0] = &dns.A{*rr_header, ip}
 
     return
 }
 
-func (r *Resolver) LookupAAAA(name string, class uint16, rrtype uint16) (answers []*dns.AAAA) {
+func (r *Resolver) LookupAAAA(name string, class uint16) (answers []*dns.AAAA) {
     answers = make([]*dns.AAAA, 0)
 
     key := nameToKey(name, "/.AAAA")
@@ -120,13 +120,13 @@ func (r *Resolver) LookupAAAA(name string, class uint16, rrtype uint16) (answers
     }
 
     answers = make([]*dns.AAAA, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: rrtype, Ttl: 0}
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeAAAA, Ttl: 0}
     answers[0] = &dns.AAAA{*rr_header, ip}
 
     return
 }
 
-func (r *Resolver) LookupTXT(name string, class uint16, rrtype uint16) (answers []*dns.TXT) {
+func (r *Resolver) LookupTXT(name string, class uint16) (answers []*dns.TXT) {
     answers = make([]*dns.TXT, 0)
 
     key := nameToKey(name, "/.TXT")
@@ -139,13 +139,13 @@ func (r *Resolver) LookupTXT(name string, class uint16, rrtype uint16) (answers 
     node := response.Node
 
     answers = make([]*dns.TXT, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: rrtype, Ttl: 0}
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeTXT, Ttl: 0}
     answers[0] = &dns.TXT{*rr_header, []string{node.Value}}
 
     return
 }
 
-func (r *Resolver) LookupCNAME(name string, class uint16, rrtype uint16) (answers []*dns.CNAME) {
+func (r *Resolver) LookupCNAME(name string, class uint16) (answers []*dns.CNAME) {
     answers = make([]*dns.CNAME, 0)
 
     key := nameToKey(name, "/.CNAME")
@@ -158,7 +158,7 @@ func (r *Resolver) LookupCNAME(name string, class uint16, rrtype uint16) (answer
     node := response.Node
 
     answers = make([]*dns.CNAME, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: rrtype, Ttl: 0}
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeCNAME, Ttl: 0}
     answers[0] = &dns.CNAME{*rr_header, node.Value}
 
     return
