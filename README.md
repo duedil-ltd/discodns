@@ -2,9 +2,7 @@
 etcdns
 ======
 
-DueDil's internal DNS system for discovery of named systems. This project acts as a DNS server that proxies any public domain requests to the internet, but responds to `duedil.net.` queries. If a result is not found for a query, it will be forwarded to the internet.
-
-When a `duedil.net.` query is received, the server then parses the query and looks for a relevant key in ZooKeeper that represents the domain. ZooKeeper is seen as the canonical store for all name information, and it is encouraged for systems that need to "find something" to use ZooKeeper instead of referencing DNS names.
+A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool for service discovery systems with.
 
 ## Getting Started
 
@@ -14,70 +12,46 @@ The etcdns project is written in Go, and uses an extensive library ([miekg/dns](
 
 ````shell
 cd etcdns
+go get  # Ignore the error about installing etcdns
 make
 ````
 
 ### Running
 
-It's as simple as launching the binary to start a DNS server listening on port 53 (tcp+udp) and accepting requests. At the very minimum you need to specify the location of your ZooKeeper cluster.
+It's as simple as launching the binary to start a DNS server listening on port 53 (tcp+udp) and accepting requests.
+
+**Note:** You need to have an etcd cluster already running.
 
 ````shell
-cd etcdns
-sudo ./build/etcdns --zk zk://127.0.0.1:2181/dns
+cd etcdns/build/
+sudo ./bin/etcdns
 ````
 
 ### Try it out
 
-It's incredibly simple to see your own domains come to life, simply insert a key for your record into ZooKeeper (e.g using the Go client below) and then you can dig the server!
+It's incredibly easy to see your own domains come to life, simply insert a key for your record into etcd and then you're ready to go! Here we'll insert a custom `A` record for `etcdns.net` pointing to `10.1.1.1`.
 
-````go
-package main
-
-import (
-    "time"
-    "launchpad.net/gozk"
-)
-
-func main() {
-    zk, session, err := gozk.Init("127.0.0.1:2181", time.Second)
-    defer zk.Close()
-
-    // Wait for connection.
-    event := <-session
-    if event.State != gozk.STATE_CONNECTED {
-        println("Couldn't connect")
-        return
-    }
-
-    _, err = zk.Create("/dns/net/duedil/foo/_A", "10.9.1.5", 0, gozk.WorldACL(gozk.PERM_ALL))
-    _, err = zk.Create("/dns/net/duedil/foo/_TXT", "testing", 0, gozk.WorldACL(gozk.PERM_ALL))
-}
+````shell
+curl -L http://127.0.0.1:4001/v2/keys/net/etcdns/.A -XPUT -d value="10.1.1.1"
+{"action":"set","node":{"key":"/net/etcdns/.A","value":"10.1.1.1","modifiedIndex":11,"createdIndex":11}}
 ````
 
 ````shell
-dig @127.0.0.1 foo.duedil.net
-; <<>> DiG 9.8.3-P1 <<>> @127.0.0.1 foo.duedil.net
-; (1 server found)
-;; global options: +cmd
-;; Got answer:
-;; ->>HEADER<<- opcode: QUERY, status: NOERROR, id: 64271
-;; flags: qr rd; QUERY: 1, ANSWER: 1, AUTHORITY: 0, ADDITIONAL: 0
-;; WARNING: recursion requested but not available
- 
+; <<>> DiG 9.8.3-P1 <<>> @localhost etcdns.net.
+; .. truncated ..
+
 ;; QUESTION SECTION:
-;foo.duedil.net.            IN  A
-;foo.duedil.net.            IN  TXT
- 
+;etcdns.net.            IN  A
+
 ;; ANSWER SECTION:
-foo.duedil.net.     1       IN  A   13.37.13.37
-foo.duedil.net.     1       IN  TXT testing
- 
-;; Query time: 0 msec
-;; SERVER: 127.0.0.1#53(127.0.0.1)
-;; WHEN: Mon Mar 17 21:16:26 2014
-;; MSG SIZE  rcvd: 54
+etcdns.net.     0   IN  A   10.1.1.1
 ````
 
-## ZooKeeper Structure
+## Notes
 
-Bleh bleh bleh.
+Only a select few of record types are supported right now. These are listed here;
+
+- `A` (ipv4)
+- `AAAA` (ipv6)
+- `TXT`
+- `CNAME`
