@@ -2,6 +2,7 @@ package main
 
 import (
     "github.com/coreos/go-etcd/etcd"
+    "runtime"
 	"os/signal"
 	"os"
 	"strings"
@@ -63,4 +64,8 @@ forever:
 			break forever
 		}
 	}
+}
+
+func init() {
+	runtime.GOMAXPROCS(runtime.NumCPU())
 }
