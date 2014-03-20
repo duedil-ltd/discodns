@@ -50,6 +50,13 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
                 msg.Answer = append(msg.Answer, a)
             }
         }
+
+        // NS records
+        if q.Qtype == dns.TypeNS || q.Qtype == dns.TypeANY {
+            for _, a := range r.LookupNS(q.Name, q.Qclass) {
+                msg.Answer = append(msg.Answer, a)
+            }
+        }
     }
 
     if len(msg.Answer) == 0 {
@@ -160,6 +167,25 @@ func (r *Resolver) LookupCNAME(name string, class uint16) (answers []*dns.CNAME)
     answers = make([]*dns.CNAME, 1)
     rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeCNAME, Ttl: 0}
     answers[0] = &dns.CNAME{*rr_header, node.Value}
+
+    return
+}
+
+func (r *Resolver) LookupNS(name string, class uint16) (answers []*dns.NS) {
+    answers = make([]*dns.NS, 0)
+
+    key := nameToKey(name, "/.NS")
+    response, err := r.etcd.Get(key, false, false)
+    if err != nil {
+        logger.Printf("Error with etcd: %s", err)
+        return
+    }
+
+    node := response.Node
+
+    answers = make([]*dns.NS, 1)
+    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeNS, Ttl: 0}
+    answers[0] = &dns.NS{*rr_header, node.Value}
 
     return
 }
