@@ -95,16 +95,35 @@ func (r *Resolver) LookupA(name string, class uint16) (answers []*dns.A) {
         return
     }
 
-    node := response.Node
+    var nodes []*etcd.Node
 
-    ip := net.ParseIP(node.Value)
-    if ip == nil {
-        logger.Fatalf("Failed to parse IP value '%s'", node.Value)
+    if response.Node.Dir == true {
+
+        nodes = make([]*etcd.Node, len(response.Node.Nodes))
+        for i := 0; i < len(response.Node.Nodes); i++ {
+            nodes[i] = &response.Node.Nodes[i]
+        }
+
+    } else {
+
+        nodes = make([]*etcd.Node, 1)
+        nodes[0] = response.Node
+
     }
 
-    answers = make([]*dns.A, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeA, Ttl: 0}
-    answers[0] = &dns.A{*rr_header, ip}
+    answers = make([]*dns.A, len(nodes))
+
+    for i := 0; i < len(nodes); i++ {
+
+        node := nodes[i]
+        ip := net.ParseIP(node.Value)
+        if ip == nil {
+            logger.Fatalf("Failed to parse IP value '%s'", node.Value)
+        }
+
+        rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeA, Ttl: 0}
+        answers[i] = &dns.A{*rr_header, ip}
+    }
 
     return
 }
