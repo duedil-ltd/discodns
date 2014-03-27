@@ -15,19 +15,99 @@ type Resolver struct {
     rTimeout   time.Duration
 }
 
+// A resultsToRecords func converts raw values for etcd Nodes into dns Answers
+type resultsToRecords func(rawRecords []*etcd.Node) (answers []dns.RR)
+
+// a nodeToRecordMapper func turns a single 'file'-type etcd node into a dns resourcerecord
+type nodeToRecordMapper func(node *etcd.Node) dns.RR
+
+func nodeToIpAddr (node *etcd.Node) net.IP {
+
+    ip := net.ParseIP(node.Value)
+    if ip == nil {
+        logger.Fatalf("Failed to parse IP value '%s'", node.Value)
+    }
+
+    return ip
+}
+
+// util function to run mapping function over everything in a list of etcd Nodes
+func mapEachRecord(nodes []*etcd.Node, mapper nodeToRecordMapper) (answers []dns.RR) {
+
+    answers = make([]dns.RR, len(nodes))
+
+    for i := 0; i < len(nodes); i++ {
+        answers[i] = mapper(nodes[i])
+    }
+
+    return
+}
+
+// search etcd for all records at a key )wether just one or a list from a 'directory'
+func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
+
+    response, err := r.etcd.Get(key, false, false)
+    if err != nil {
+        logger.Printf("Error with etcd: %s", err)
+        return
+    }
+
+    if response.Node.Dir == true {
+
+        nodes = make([]*etcd.Node, len(response.Node.Nodes))
+        for i := 0; i < len(response.Node.Nodes); i++ {
+            nodes[i] = &response.Node.Nodes[i]
+        }
+
+    } else {
+
+        nodes = make([]*etcd.Node, 1)
+        nodes[0] = response.Node
+
+    }
+
+    return
+}
+
+
+
 func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     q := req.Question[0]
 
     msg = new(dns.Msg)
     msg.SetReply(req)
 
+    // Define some useful typical callbacks for core record types:
+
+    // shorthand for a RR_Header ctor bound to name & class
+    makeRRHeader := func (rrtype uint16) dns.RR_Header {
+        return dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrtype, Ttl: 0}
+    }
+
+    // for some reason appending a slice of answers from mapEachRecord isn't
+    // working, so add a util to loop and append (urgh)
+    addAnswers := func (items []dns.RR) {
+        for _, a := range items {
+            msg.Answer = append(msg.Answer, a)
+        }
+    }
+
+    // check query type and act accordingly
+
     if q.Qclass == dns.ClassINET {
 
         // A records
         if q.Qtype == dns.TypeA || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupA(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
-            }
+
+            nodes := r.GetFromStorage(nameToKey(q.Name, "/.A"))
+            answers := mapEachRecord(nodes, func (node *etcd.Node) dns.RR {
+                ip := nodeToIpAddr(node)
+                return &dns.A{makeRRHeader(dns.TypeA), ip}
+            })
+
+            // not really sure why this doesnt work, `append` docs claim it should:
+            // msg.Answer = append(msg.Answer, answers)
+            addAnswers(answers)
         }
 
         // AAAA records
@@ -85,48 +165,6 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
-func (r *Resolver) LookupA(name string, class uint16) (answers []*dns.A) {
-    answers = make([]*dns.A, 0)
-
-    key := nameToKey(name, "/.A")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    var nodes []*etcd.Node
-
-    if response.Node.Dir == true {
-
-        nodes = make([]*etcd.Node, len(response.Node.Nodes))
-        for i := 0; i < len(response.Node.Nodes); i++ {
-            nodes[i] = &response.Node.Nodes[i]
-        }
-
-    } else {
-
-        nodes = make([]*etcd.Node, 1)
-        nodes[0] = response.Node
-
-    }
-
-    answers = make([]*dns.A, len(nodes))
-
-    for i := 0; i < len(nodes); i++ {
-
-        node := nodes[i]
-        ip := net.ParseIP(node.Value)
-        if ip == nil {
-            logger.Fatalf("Failed to parse IP value '%s'", node.Value)
-        }
-
-        rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeA, Ttl: 0}
-        answers[i] = &dns.A{*rr_header, ip}
-    }
-
-    return
-}
 
 func (r *Resolver) LookupAAAA(name string, class uint16) (answers []*dns.AAAA) {
     answers = make([]*dns.AAAA, 0)
