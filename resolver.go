@@ -25,10 +25,7 @@ func (e *NodeConversionError) Error() string {
         &e.Node)
 }
 
-// A resultsToRecords func converts raw values for etcd Nodes into dns Answers
-type resultsToRecords func(rawRecords []*etcd.Node) (answers []dns.RR)
-
-// a nodeToRecordMapper func turns a single 'file'-type etcd node into a dns resourcerecord
+// A nodeToRecordMapper func turns a single 'file'-type etcd node into a dns resourcerecord
 type nodeToRecordMapper func(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error)
 
 type Resolver struct {
@@ -37,7 +34,9 @@ type Resolver struct {
     rTimeout   time.Duration
 }
 
-// search etcd for all records at a key )wether just one or a list from a 'directory'
+// GetFromStorage searches etcd for all records at a key, supporting both single 'file' nodes
+// (in which case a slice of length 1 is returned) and 'directory' nodes (in which case, a slice
+// of all child nodes are returned)
 func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
 
     response, err := r.etcd.Get(key, false, false)
@@ -63,6 +62,9 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
     return
 }
 
+// Lookup responds to DNS messages of type Query, with a dns message containing Answers.
+// In the event that the query's value+type yields no known records, this falls back to
+// querying the given nameservers instead
 func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     q := req.Question[0]
 
@@ -74,6 +76,8 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
         return dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrtype, Ttl: 0}
     }
 
+    // The generic closure used for all types: find all etcd records, pass them
+    // through the matching mapping func and append the answer
     addAnswersForType := func (rrType uint16) {
 
         typeStr := dns.TypeToString[rrType]
