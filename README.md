@@ -1,5 +1,5 @@
 
-etcdns
+discodns
 ======
 
 A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems.
@@ -12,11 +12,11 @@ The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distri
 
 ### Building
 
-The etcdns project is written in Go, and uses an extensive library ([miekg/dns](https://github.com/miekg/dns)) to provide the actual implementation of the DNS protocol.
+The discodns project is written in Go, and uses an extensive library ([miekg/dns](https://github.com/miekg/dns)) to provide the actual implementation of the DNS protocol.
 
 ````shell
-cd etcdns
-go get  # Ignore the error about installing etcdns
+cd discodns
+go get  # Ignore the error about installing discodns
 make
 ````
 
@@ -27,28 +27,28 @@ It's as simple as launching the binary to start a DNS server listening on port 5
 **Note:** You need to have an etcd cluster already running.
 
 ````shell
-cd etcdns/build/
-sudo ./bin/etcdns
+cd discodns/build/
+sudo ./bin/discodns
 ````
 
 ### Try it out
 
-It's incredibly easy to see your own domains come to life, simply insert a key for your record into etcd and then you're ready to go! Here we'll insert a custom `A` record for `etcdns.net` pointing to `10.1.1.1`.
+It's incredibly easy to see your own domains come to life, simply insert a key for your record into etcd and then you're ready to go! Here we'll insert a custom `A` record for `discodns.net` pointing to `10.1.1.1`.
 
 ````shell
-curl -L http://127.0.0.1:4001/v2/keys/net/etcdns/.A -XPUT -d value="10.1.1.1"
-{"action":"set","node":{"key":"/net/etcdns/.A","value":"10.1.1.1","modifiedIndex":11,"createdIndex":11}}
+curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.A -XPUT -d value="10.1.1.1"
+{"action":"set","node":{"key":"/net/discodns/.A","value":"10.1.1.1","modifiedIndex":11,"createdIndex":11}}
 ````
 
 ````shell
-; <<>> DiG 9.8.3-P1 <<>> @localhost etcdns.net.
+; <<>> DiG 9.8.3-P1 <<>> @localhost discodns.net.
 ; .. truncated ..
 
 ;; QUESTION SECTION:
-;etcdns.net.            IN  A
+;discodns.net.            IN  A
 
 ;; ANSWER SECTION:
-etcdns.net.     0   IN  A   10.1.1.1
+discodns.net.     0   IN  A   10.1.1.1
 ````
 
 ## Notes
