@@ -5,9 +5,28 @@ import (
     "github.com/miekg/dns"
     "net"
     "strings"
+    "fmt"
     "bytes"
     "time"
 )
+
+type NodeConversionError struct {
+    Message string
+    Node *etcd.Node
+    AttemptedType uint16
+}
+
+func (e *NodeConversionError) Error() string {
+    return fmt.Sprintf(
+        "Unable to convert etc Node into a RR of type %d ('%s'): %s. Node details: %+v",
+        e.AttemptedType,
+        dns.TypeToString[e.AttemptedType],
+        e.Message,
+        &e.Node)
+}
+
+// A nodeToRecordMapper func turns a single 'file'-type etcd node into a dns resourcerecord
+type nodeToRecordMapper func(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error)
 
 type Resolver struct {
     etcd        *etcd.Client
@@ -15,48 +34,85 @@ type Resolver struct {
     rTimeout   time.Duration
 }
 
+// GetFromStorage searches etcd for all records at a key, supporting both single 'file' nodes
+// (in which case a slice of length 1 is returned) and 'directory' nodes (in which case, a slice
+// of all child nodes are returned)
+func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
+
+    response, err := r.etcd.Get(key, false, false)
+    if err != nil {
+        logger.Printf("Error with etcd: %s", err)
+        return
+    }
+
+    if response.Node.Dir == true {
+
+        nodes = make([]*etcd.Node, len(response.Node.Nodes))
+        for i := 0; i < len(response.Node.Nodes); i++ {
+            nodes[i] = &response.Node.Nodes[i]
+        }
+
+    } else {
+
+        nodes = make([]*etcd.Node, 1)
+        nodes[0] = response.Node
+
+    }
+
+    return
+}
+
+// Lookup responds to DNS messages of type Query, with a dns message containing Answers.
+// In the event that the query's value+type yields no known records, this falls back to
+// querying the given nameservers instead
 func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     q := req.Question[0]
 
     msg = new(dns.Msg)
     msg.SetReply(req)
 
+    // shorthand for a RR_Header ctor bound to name & class
+    makeRRHeader := func (rrtype uint16) dns.RR_Header {
+        return dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrtype, Ttl: 0}
+    }
+
+    // The generic closure used for all types: find all etcd records, pass them
+    // through the matching mapping func and append the answer
+    addAnswersForType := func (rrType uint16) {
+
+        typeStr := dns.TypeToString[rrType]
+
+        nodes := r.GetFromStorage(nameToKey(q.Name, "/." + typeStr))
+
+        // answers = make([]*dns.RR, 0)
+
+        for _, node := range nodes {
+            answer, err := converters[rrType](node, makeRRHeader(rrType))
+            if err != nil {
+                logger.Println(err.Error())
+            } else {
+                msg.Answer = append(msg.Answer, answer)
+            }
+        }
+
+        return
+    }
+
+    // check query type and act accordingly
+
     if q.Qclass == dns.ClassINET {
 
-        // A records
-        if q.Qtype == dns.TypeA || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupA(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
+        if q.Qtype == dns.TypeANY {
+            for rrType, _ := range converters {
+                addAnswersForType(rrType)
             }
+        } else {
+            if _, ok := converters[q.Qtype]; ok {
+                addAnswersForType(q.Qtype)
+            }
+            // add conditionals here for any types that arent in the conversion map becuase they need special processing
         }
 
-        // AAAA records
-        if q.Qtype == dns.TypeAAAA || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupAAAA(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
-            }
-        }
-
-        // TXT records
-        if q.Qtype == dns.TypeTXT || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupTXT(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
-            }
-        }
-
-        // CNAME records
-        if q.Qtype == dns.TypeCNAME || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupCNAME(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
-            }
-        }
-
-        // NS records
-        if q.Qtype == dns.TypeNS || q.Qtype == dns.TypeANY {
-            for _, a := range r.LookupNS(q.Name, q.Qclass) {
-                msg.Answer = append(msg.Answer, a)
-            }
-        }
     }
 
     if len(msg.Answer) == 0 {
@@ -85,111 +141,6 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
-func (r *Resolver) LookupA(name string, class uint16) (answers []*dns.A) {
-    answers = make([]*dns.A, 0)
-
-    key := nameToKey(name, "/.A")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    node := response.Node
-
-    ip := net.ParseIP(node.Value)
-    if ip == nil {
-        logger.Fatalf("Failed to parse IP value '%s'", node.Value)
-    }
-
-    answers = make([]*dns.A, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeA, Ttl: 0}
-    answers[0] = &dns.A{*rr_header, ip}
-
-    return
-}
-
-func (r *Resolver) LookupAAAA(name string, class uint16) (answers []*dns.AAAA) {
-    answers = make([]*dns.AAAA, 0)
-
-    key := nameToKey(name, "/.AAAA")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    node := response.Node
-
-    ip := net.ParseIP(node.Value)
-    if ip == nil {
-        logger.Fatalf("Failed to parse IP value '%s'", node.Value)
-    }
-
-    answers = make([]*dns.AAAA, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeAAAA, Ttl: 0}
-    answers[0] = &dns.AAAA{*rr_header, ip}
-
-    return
-}
-
-func (r *Resolver) LookupTXT(name string, class uint16) (answers []*dns.TXT) {
-    answers = make([]*dns.TXT, 0)
-
-    key := nameToKey(name, "/.TXT")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    node := response.Node
-
-    answers = make([]*dns.TXT, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeTXT, Ttl: 0}
-    answers[0] = &dns.TXT{*rr_header, []string{node.Value}}
-
-    return
-}
-
-func (r *Resolver) LookupCNAME(name string, class uint16) (answers []*dns.CNAME) {
-    answers = make([]*dns.CNAME, 0)
-
-    key := nameToKey(name, "/.CNAME")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    node := response.Node
-
-    answers = make([]*dns.CNAME, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeCNAME, Ttl: 0}
-    answers[0] = &dns.CNAME{*rr_header, node.Value}
-
-    return
-}
-
-func (r *Resolver) LookupNS(name string, class uint16) (answers []*dns.NS) {
-    answers = make([]*dns.NS, 0)
-
-    key := nameToKey(name, "/.NS")
-    response, err := r.etcd.Get(key, false, false)
-    if err != nil {
-        logger.Printf("Error with etcd: %s", err)
-        return
-    }
-
-    node := response.Node
-
-    answers = make([]*dns.NS, 1)
-    rr_header := &dns.RR_Header{Name: name, Class: class, Rrtype: dns.TypeNS, Ttl: 0}
-    answers[0] = &dns.NS{*rr_header, node.Value}
-
-    return
-}
-
 func nameToKey(name string, suffix string) string {
     segments := strings.Split(name, ".")
 
@@ -203,4 +154,69 @@ func nameToKey(name string, suffix string) string {
 
     keyBuffer.WriteString(suffix)
     return keyBuffer.String()
+}
+
+/*
+A map of conversion functions that turn individual etcd nodes into dns answers
+in the case of any, enumerate the entire map and search for each one
+*/
+
+var converters = map[uint16]nodeToRecordMapper {
+
+    dns.TypeA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+
+        ip := net.ParseIP(node.Value)
+        if ip == nil {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Failed to parse %s as IP Address", node.Value),
+                AttemptedType: dns.TypeA,
+            }
+        } else if ip.To4() == nil {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Value %s isn't an IPv4 address", node.Value),
+                AttemptedType: dns.TypeA,
+            }
+        } else {
+            rr = &dns.A{header, ip}
+        }
+        return
+    },
+
+    dns.TypeAAAA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+
+        ip := net.ParseIP(node.Value)
+        if ip == nil {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Failed to parse IP Address %s", node.Value),
+                AttemptedType: dns.TypeAAAA,
+            }
+        } else if ip.To16() == nil {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Value %s isn't an IPv6 address", node.Value),
+                AttemptedType: dns.TypeA,
+            }
+        } else {
+            rr = &dns.AAAA{header, ip}
+        }
+        return
+    },
+
+    dns.TypeTXT: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        rr = &dns.TXT{header, []string{node.Value}}
+        return
+    },
+
+    dns.TypeCNAME: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        rr = &dns.CNAME{header, node.Value}
+        return
+    },
+
+    dns.TypeNS: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        rr = &dns.NS{header, node.Value}
+        return
+    },
 }
