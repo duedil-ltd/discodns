@@ -12,7 +12,7 @@ import (
 )
 
 var (
-	logger = log.New(os.Stdout, "[etcdns] ", log.Ldate|log.Ltime)
+	logger = log.New(os.Stdout, "[discodns] ", log.Ldate|log.Ltime)
 )
 
 func main() {
