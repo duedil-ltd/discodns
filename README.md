@@ -6,7 +6,7 @@ A DNS resolver that first queries a populated database of names and records, the
 
 ### Why etcd?
 
-The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with dome very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services should use etcd to public and watch for changes to records and act accordingly.
+The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with some very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services should use etcd to public and watch for changes to records and act accordingly.
 
 ## Getting Started
 
@@ -28,7 +28,7 @@ It's as simple as launching the binary to start a DNS server listening on port 5
 
 ````shell
 cd discodns/build/
-sudo ./bin/discodns
+sudo ./bin/discodns -domain=discodns.net
 ````
 
 ### Try it out
@@ -53,24 +53,24 @@ discodns.net.     0   IN  A   10.1.1.1
 
 ### Storage
 
-The records are stored in a reverse domain structure, i.e `duedil.com` would equate to the key `com/duedil`. See the examples below;
+The records are stored in a reverse domain structure, i.e `discodns.net` would equate to the key `com/discodns`. See the examples below;
 
-- `duedil.net. -> A -> [10.1.1.1, 10.1.1.2]`
-    - `/net/duedil/.A/foo -> 10.1.1.1`
-    - `/net/duedil/.A/bar -> 10.1.1.2`
+- `discodns.net. -> A -> [10.1.1.1, 10.1.1.2]`
+    - `/net/discodns/.A/foo -> 10.1.1.1`
+    - `/net/discodns/.A/bar -> 10.1.1.2`
 
 You'll notice the `.A` folder here on the end of the reverse domain, this signifies to the dns resolver that the values beneath are A records. You can have an infinite number of nested keys within this folder, allowing for some very interesting automation patterns. *Multiple keys within this folder represent multiple records for the same dns entry*.
 
 ````shell
-; <<>> DiG 9.8.3-P1 <<>> @localhost duedil.net.
+; <<>> DiG 9.8.3-P1 <<>> @localhost discodns.net.
 ; .. truncated ..
 
 ;; QUESTION SECTION:
-;duedil.net.            IN  A
+;discodns.net.            IN  A
 
 ;; ANSWER SECTION:
-duedil.net.     0   IN  A   10.1.1.1
-duedil.net.     0   IN  A   10.1.1.2
+discodns.net.     0   IN  A   10.1.1.1
+discodns.net.     0   IN  A   10.1.1.2
 ````
 
 ## Notes
