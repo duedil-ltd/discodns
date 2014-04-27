@@ -36,11 +36,10 @@ type Resolver struct {
 //  - File:         /foo/bar/.A -> "value"
 //  - Directory:    /foo/bar/.A/0 -> "value-0"
 //                  /foo/bar/.A/1 -> "value-1"
-func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
+func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
-        logger.Printf("Error with etcd: %s", err)
         return
     }
 
@@ -69,16 +68,33 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     msg.RecursionAvailable = true
 
     if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
+        var err error
         if q.Qclass == dns.ClassINET {
             if q.Qtype == dns.TypeANY {
                 for rrType, _ := range converters {
-                    r.LookupAnswersForType(msg, q, rrType)
+                    err = r.LookupAnswersForType(msg, q, rrType)
                 }
             } else {
                 if _, ok := converters[q.Qtype]; ok {
-                    r.LookupAnswersForType(msg, q, q.Qtype)
+                    err = r.LookupAnswersForType(msg, q, q.Qtype)
                 }
             }
+        }
+
+        if err != nil {
+            if e, ok := err.(*etcd.EtcdError); ok {
+                if e.ErrorCode == 100 {
+                    msg.SetRcode(req, dns.RcodeNameError)
+                    return
+                }
+            }
+
+            msg.SetRcode(req, dns.RcodeServerFailure)
+            return
+        }
+
+        if len(msg.Answer) == 0 {
+            msg.SetRcode(req, dns.RcodeNameError)
         }
     } else if len(msg.Answer) == 0 {
         c := make(chan *dns.Msg)
@@ -106,11 +122,11 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
-func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16) {
+func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16) (err error) {
     name := strings.ToLower(q.Name)
 
     typeStr := dns.TypeToString[rrType]
-    nodes := r.GetFromStorage(nameToKey(name, "/." + typeStr))
+    nodes, err := r.GetFromStorage(nameToKey(name, "/." + typeStr))
 
     for _, node := range nodes {
         header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
@@ -121,6 +137,8 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
             msg.Answer = append(msg.Answer, answer)
         }
     }
+
+    return
 }
 
 func nameToKey(name string, suffix string) string {
