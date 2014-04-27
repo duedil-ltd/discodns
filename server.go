@@ -36,12 +36,13 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
         etcd: h.server.etcd,
         dns: h.DNSClient(),
         domain: h.server.domain,
+        nameservers: h.server.ns,
         rTimeout: h.server.rTimeout,
     }
 
     // Lookup the dns record for the request
     // This method will add any answers to the message
-    msg := resolver.Lookup(req, h.server.ns)
+    msg := resolver.Lookup(req)
 
     if msg != nil {
         response.WriteMsg(msg)

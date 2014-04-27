@@ -29,6 +29,7 @@ type Resolver struct {
     etcd        *etcd.Client
     dns         *dns.Client
     domain      string
+    nameservers []string
     rTimeout    time.Duration
 }
 
@@ -59,8 +60,19 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 // Lookup responds to DNS messages of type Query, with a dns message containing Answers.
 // In the event that the query's value+type yields no known records, this falls back to
 // querying the given nameservers instead
-func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
+func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     q := req.Question[0]
+
+    // Figure out if recursion is desired
+    // If it is
+    //  - We'll push any domains not under r.domain to the upstream resolvers
+    //  - If the domain is a CNAME
+    //    - If it points to something within r.domain we're going to resolve it
+    //    - If it points to something outside we're going to resolve upstream
+    // If not, we're not going to perform any further nameserver requests, this means
+    //  - If the domain isn't within r.domain we ignore it completely
+    //  - If the domain is a CNAME (not an A/AAAA) we're going to simply return it
+    recurse := req.RecursionDesired
 
     msg = new(dns.Msg)
     msg.SetReply(req)
@@ -72,11 +84,11 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
         if q.Qclass == dns.ClassINET {
             if q.Qtype == dns.TypeANY {
                 for rrType, _ := range converters {
-                    err = r.LookupAnswersForType(msg, q, rrType)
+                    err = r.LookupAnswersForType(msg, q, rrType, false)
                 }
             } else {
                 if _, ok := converters[q.Qtype]; ok {
-                    err = r.LookupAnswersForType(msg, q, q.Qtype)
+                    err = r.LookupAnswersForType(msg, q, q.Qtype, recurse)
                 }
             }
         }
@@ -96,9 +108,9 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
         if len(msg.Answer) == 0 {
             msg.SetRcode(req, dns.RcodeNameError)
         }
-    } else if len(msg.Answer) == 0 {
+    } else if recurse && len(msg.Answer) == 0 {
         c := make(chan *dns.Msg)
-        for _, nameserver := range nameservers {
+        for _, nameserver := range r.nameservers {
             go r.LookupNameserver(c, req, nameserver)
         }
 
@@ -122,18 +134,48 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
-func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16) (err error) {
+func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16, recurse bool) (err error) {
     name := strings.ToLower(q.Name)
 
     typeStr := dns.TypeToString[rrType]
     nodes, err := r.GetFromStorage(nameToKey(name, "/." + typeStr))
 
+    // If there are no records found, and we're searching for A/AAAA let's look
+    // for an alias (CNAME)
+    cname := false
+    if err != nil && err.(*etcd.EtcdError).ErrorCode == 100 {
+        if (rrType == dns.TypeA || rrType == dns.TypeAAAA) {
+            cname = true
+            nodes, err = r.GetFromStorage(nameToKey(name, "/." + dns.TypeToString[dns.TypeCNAME]))
+        }
+    }
+
     for _, node := range nodes {
-        header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
-        answer, err := converters[rrType](node, header)
-        if err != nil {
-            logger.Println(err.Error())
+        if recurse && cname {
+
+            header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: dns.TypeCNAME, Ttl: 0}
+            answer, err := converters[dns.TypeCNAME](node, header)
+            if err != nil {
+                break // Break and return the error!
+            }
+
+            msg.Answer = append(msg.Answer, answer)
+
+            query := new(dns.Msg)
+            query.SetQuestion(node.Value, rrType)
+            query.RecursionDesired = true
+
+            result := r.Lookup(query)
+            if result != nil {
+                msg.Answer = append(msg.Answer, result.Answer...)
+            }
         } else {
+            header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
+            answer, err := converters[rrType](node, header)
+            if err != nil {
+                break // Break and return the error!
+            }
+
             msg.Answer = append(msg.Answer, answer)
         }
     }
