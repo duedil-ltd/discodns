@@ -3,69 +3,74 @@ package main
 import (
     "github.com/coreos/go-etcd/etcd"
     "runtime"
-	"os/signal"
-	"os"
-	"strings"
-	"log"
-	"flag"
-	"time"
+    "os/signal"
+    "os"
+    "strings"
+    "log"
+    "flag"
+    "time"
 )
 
 var (
-	logger = log.New(os.Stdout, "[discodns] ", log.Ldate|log.Ltime)
+    logger = log.New(os.Stdout, "[discodns] ", log.Ldate|log.Ltime)
 )
 
 func main() {
 
-	var addr = flag.String("listen", "0.0.0.0", "Listen IP address")
-	var port = flag.Int("port", 53, "Port to listen on")
-	var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
-	var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
-	var timeout = flag.String("ns-timeout", "5s", "Default nameserver timeout")
-	flag.Parse()
+    var addr = flag.String("listen", "0.0.0.0", "Listen IP address")
+    var port = flag.Int("port", 53, "Port to listen on")
+    var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
+    var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
+    var timeout = flag.String("ns-timeout", "5s", "Default nameserver timeout")
+    var domain = flag.String("domain", "local", "Constrain discodns to a domain")
+    flag.Parse()
 
-	// Parse the list of nameservers
-	ns := strings.Split(*nameservers, ",")
+    // Parse the list of nameservers
+    ns := strings.Split(*nameservers, ",")
 
-	// Parse the timeout string
-	nsTimeout, err := time.ParseDuration(*timeout)
-	if err != nil {
-		logger.Fatalf("Failed to parse duration '%s'", timeout)
-	}
+    // Parse the timeout string
+    nsTimeout, err := time.ParseDuration(*timeout)
+    if err != nil {
+        logger.Fatalf("Failed to parse duration '%s'", timeout)
+    }
 
-	// Connect to ETCD (wait for a connection)
-	etcd := etcd.NewClient(strings.Split(*hosts, ","))
+    // Cleanup the domain
+    root_domain := strings.Trim(*domain, ".") + "."
 
-	if !etcd.SyncCluster() {
-		logger.Fatalf("Failed to connect to etcd cluster at launch time")
-	}
+    // Connect to ETCD (wait for a connection)
+    etcd := etcd.NewClient(strings.Split(*hosts, ","))
 
-	// Start up the DNS resolver server
-	server := &Server{
-		addr: *addr,
-		port: *port,
-		etcd: etcd,
-		rTimeout: nsTimeout,
-		wTimeout: nsTimeout,
-		ns: ns}
+    if !etcd.SyncCluster() {
+        logger.Fatalf("Failed to connect to etcd cluster at launch time")
+    }
 
-	server.Run()
+    // Start up the DNS resolver server
+    server := &Server{
+        addr: *addr,
+        port: *port,
+        etcd: etcd,
+        rTimeout: nsTimeout,
+        wTimeout: nsTimeout,
+        domain: root_domain,
+        ns: ns}
 
-	logger.Printf("Listening on %s:%d\n", *addr, *port)
+    server.Run()
 
-	sig := make(chan os.Signal)
-	signal.Notify(sig, os.Interrupt)
+    logger.Printf("Listening on %s:%d\n", *addr, *port)
+
+    sig := make(chan os.Signal)
+    signal.Notify(sig, os.Interrupt)
 
 forever:
-	for {
-		select {
-		case <-sig:
-			logger.Printf("Bye bye :(\n")
-			break forever
-		}
-	}
+    for {
+        select {
+        case <-sig:
+            logger.Printf("Bye bye :(\n")
+            break forever
+        }
+    }
 }
 
 func init() {
-	runtime.GOMAXPROCS(runtime.NumCPU())
+    runtime.GOMAXPROCS(runtime.NumCPU())
 }

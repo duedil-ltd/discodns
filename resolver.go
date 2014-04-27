@@ -28,7 +28,8 @@ func (e *NodeConversionError) Error() string {
 type Resolver struct {
     etcd        *etcd.Client
     dns         *dns.Client
-    rTimeout   time.Duration
+    domain      string
+    rTimeout    time.Duration
 }
 
 // GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
@@ -64,21 +65,22 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
 
     msg = new(dns.Msg)
     msg.SetReply(req)
+    msg.Authoritative = true
+    msg.RecursionAvailable = true
 
-
-    if q.Qclass == dns.ClassINET {
-        if q.Qtype == dns.TypeANY {
-            for rrType, _ := range converters {
-                r.LookupAnswersForType(msg, q, rrType)
-            }
-        } else {
-            if _, ok := converters[q.Qtype]; ok {
-                r.LookupAnswersForType(msg, q, q.Qtype)
+    if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
+        if q.Qclass == dns.ClassINET {
+            if q.Qtype == dns.TypeANY {
+                for rrType, _ := range converters {
+                    r.LookupAnswersForType(msg, q, rrType)
+                }
+            } else {
+                if _, ok := converters[q.Qtype]; ok {
+                    r.LookupAnswersForType(msg, q, q.Qtype)
+                }
             }
         }
-    }
-
-    if len(msg.Answer) == 0 {
+    } else if len(msg.Answer) == 0 {
         c := make(chan *dns.Msg)
         for _, nameserver := range nameservers {
             go r.LookupNameserver(c, req, nameserver)
@@ -105,8 +107,10 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
 }
 
 func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16) {
+    name := strings.ToLower(q.Name)
+
     typeStr := dns.TypeToString[rrType]
-    nodes := r.GetFromStorage(nameToKey(q.Name, "/." + typeStr))
+    nodes := r.GetFromStorage(nameToKey(name, "/." + typeStr))
 
     for _, node := range nodes {
         header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
