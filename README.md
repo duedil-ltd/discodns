@@ -2,7 +2,7 @@
 discodns
 ======
 
-A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems.
+A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems, without imposing any restrictions on domain structure or architecture.
 
 ### Why etcd?
 
@@ -24,7 +24,7 @@ make
 
 It's as simple as launching the binary to start a DNS server listening on port 53 (tcp+udp) and accepting requests.
 
-**Note:** You need to have an etcd cluster already running.
+**Note:** You need to have an etcd cluster already running, use the `-h` argument for details on other configuration options.
 
 ````shell
 cd discodns/build/
