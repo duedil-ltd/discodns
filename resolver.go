@@ -25,18 +25,16 @@ func (e *NodeConversionError) Error() string {
         &e.Node)
 }
 
-// A nodeToRecordMapper func turns a single 'file'-type etcd node into a dns resourcerecord
-type nodeToRecordMapper func(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error)
-
 type Resolver struct {
     etcd        *etcd.Client
     dns         *dns.Client
     rTimeout   time.Duration
 }
 
-// GetFromStorage searches etcd for all records at a key, supporting both single 'file' nodes
-// (in which case a slice of length 1 is returned) and 'directory' nodes (in which case, a slice
-// of all child nodes are returned)
+// GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
+//  - File:         /foo/bar/.A -> "value"
+//  - Directory:    /foo/bar/.A/0 -> "value-0"
+//                  /foo/bar/.A/1 -> "value-1"
 func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
 
     response, err := r.etcd.Get(key, false, false)
@@ -46,17 +44,13 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node) {
     }
 
     if response.Node.Dir == true {
-
         nodes = make([]*etcd.Node, len(response.Node.Nodes))
         for i := 0; i < len(response.Node.Nodes); i++ {
             nodes[i] = &response.Node.Nodes[i]
         }
-
     } else {
-
         nodes = make([]*etcd.Node, 1)
         nodes[0] = response.Node
-
     }
 
     return
@@ -71,48 +65,17 @@ func (r *Resolver) Lookup(req *dns.Msg, nameservers []string) (msg *dns.Msg) {
     msg = new(dns.Msg)
     msg.SetReply(req)
 
-    // shorthand for a RR_Header ctor bound to name & class
-    makeRRHeader := func (rrtype uint16) dns.RR_Header {
-        return dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrtype, Ttl: 0}
-    }
-
-    // The generic closure used for all types: find all etcd records, pass them
-    // through the matching mapping func and append the answer
-    addAnswersForType := func (rrType uint16) {
-
-        typeStr := dns.TypeToString[rrType]
-
-        nodes := r.GetFromStorage(nameToKey(q.Name, "/." + typeStr))
-
-        // answers = make([]*dns.RR, 0)
-
-        for _, node := range nodes {
-            answer, err := converters[rrType](node, makeRRHeader(rrType))
-            if err != nil {
-                logger.Println(err.Error())
-            } else {
-                msg.Answer = append(msg.Answer, answer)
-            }
-        }
-
-        return
-    }
-
-    // check query type and act accordingly
 
     if q.Qclass == dns.ClassINET {
-
         if q.Qtype == dns.TypeANY {
             for rrType, _ := range converters {
-                addAnswersForType(rrType)
+                r.LookupAnswersForType(msg, q, rrType)
             }
         } else {
             if _, ok := converters[q.Qtype]; ok {
-                addAnswersForType(q.Qtype)
+                r.LookupAnswersForType(msg, q, q.Qtype)
             }
-            // add conditionals here for any types that arent in the conversion map becuase they need special processing
         }
-
     }
 
     if len(msg.Answer) == 0 {
@@ -141,6 +104,21 @@ func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
     c <- msg
 }
 
+func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16) {
+    typeStr := dns.TypeToString[rrType]
+    nodes := r.GetFromStorage(nameToKey(q.Name, "/." + typeStr))
+
+    for _, node := range nodes {
+        header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
+        answer, err := converters[rrType](node, header)
+        if err != nil {
+            logger.Println(err.Error())
+        } else {
+            msg.Answer = append(msg.Answer, answer)
+        }
+    }
+}
+
 func nameToKey(name string, suffix string) string {
     segments := strings.Split(name, ".")
 
@@ -156,12 +134,8 @@ func nameToKey(name string, suffix string) string {
     return keyBuffer.String()
 }
 
-/*
-A map of conversion functions that turn individual etcd nodes into dns answers
-in the case of any, enumerate the entire map and search for each one
-*/
-
-var converters = map[uint16]nodeToRecordMapper {
+// Map of conversion functions that turn individual etcd nodes into dns.RR answers
+var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
 
     dns.TypeA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
 
