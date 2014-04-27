@@ -8,6 +8,7 @@ import (
     "fmt"
     "bytes"
     "time"
+    "sync"
 )
 
 type NodeConversionError struct {
@@ -150,34 +151,41 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
         }
     }
 
-    for _, node := range nodes {
-        if recurse && cname {
+    // Process all of the nodes concurrently
+    var wg sync.WaitGroup
+    answers := make([][]dns.RR, len(nodes))
+    for i, node := range nodes {
+        wg.Add(1)
 
-            header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: dns.TypeCNAME, Ttl: 0}
-            answer, err := converters[dns.TypeCNAME](node, header)
-            if err != nil {
-                break // Break and return the error!
+        go func(i int, node *etcd.Node) {
+            if recurse && cname {
+                header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: dns.TypeCNAME, Ttl: 0}
+                answer, _ := converters[dns.TypeCNAME](node, header)
+                answers[i] = append(answers[i], answer)
+
+                // Start a chain of recursive queries to find any leaf A records
+                query := new(dns.Msg)
+                query.SetQuestion(node.Value, rrType)
+                query.RecursionDesired = true
+
+                result := r.Lookup(query)
+                if result != nil {
+                    answers[i] = append(answers[i], result.Answer...)
+                }
+            } else {
+                header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
+                answer, _ := converters[rrType](node, header)
+                answers[i] = append(answers[i], answer)
             }
 
-            msg.Answer = append(msg.Answer, answer)
+            wg.Done()
+        }(i, node)
+    }
+    wg.Wait()
 
-            query := new(dns.Msg)
-            query.SetQuestion(node.Value, rrType)
-            query.RecursionDesired = true
-
-            result := r.Lookup(query)
-            if result != nil {
-                msg.Answer = append(msg.Answer, result.Answer...)
-            }
-        } else {
-            header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
-            answer, err := converters[rrType](node, header)
-            if err != nil {
-                break // Break and return the error!
-            }
-
-            msg.Answer = append(msg.Answer, answer)
-        }
+    // Collect up all of the answers
+    for _, a := range answers {
+        msg.Answer = append(msg.Answer, a...)
     }
 
     return
