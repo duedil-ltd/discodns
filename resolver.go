@@ -160,7 +160,9 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
             if recurse && cname {
                 header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: dns.TypeCNAME, Ttl: 0}
                 answer, _ := converters[dns.TypeCNAME](node, header)
-                answers[i] = append(answers[i], answer)
+                if answer != nil {
+                    answers[i] = append(answers[i], answer)
+                }
 
                 // Start a chain of recursive queries to find any leaf A records
                 query := new(dns.Msg)
