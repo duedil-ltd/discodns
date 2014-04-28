@@ -60,7 +60,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
 // Lookup responds to DNS messages of type Query, with a dns message containing Answers.
 // In the event that the query's value+type yields no known records, this falls back to
-// querying the given nameservers instead
+// querying the given nameservers instead.
 func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     q := req.Question[0]
 
@@ -70,7 +70,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     //  - If the domain is a CNAME
     //    - If it points to something within r.domain we're going to resolve it
     //    - If it points to something outside we're going to resolve upstream
-    // If not, we're not going to perform any further nameserver requests, this means
+    // If not, we're not going to perform any further requests, this means
     //  - If the domain isn't within r.domain we ignore it completely
     //  - If the domain is a CNAME (not an A/AAAA) we're going to simply return it
     recurse := req.RecursionDesired
@@ -93,6 +93,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
             }
         }
 
+        // Handle any errors we might see when trying to do the lookup
         if err != nil {
             if e, ok := err.(*etcd.EtcdError); ok {
                 if e.ErrorCode == 100 {
@@ -104,11 +105,10 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
             msg.SetRcode(req, dns.RcodeServerFailure)
             return
         }
-
-        if len(msg.Answer) == 0 {
-            msg.SetRcode(req, dns.RcodeNameError)
-        }
-    } else if recurse && len(msg.Answer) == 0 {
+    } else if recurse {
+        // Hand off all other queries to the upstream nameservers
+        // We're going to query all of them in a goroutine and listen to whoever is fastest
+        // TODO(tarnfeld): We should maintain an RTT for each nameserver and go by that
         c := make(chan *dns.Msg)
         for _, nameserver := range r.nameservers {
             go r.LookupNameserver(c, req, nameserver)
