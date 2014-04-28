@@ -21,7 +21,7 @@ func main() {
     var port = flag.Int("port", 53, "Port to listen on")
     var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
     var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
-    var timeout = flag.String("ns-timeout", "5s", "Default nameserver timeout")
+    var timeout = flag.String("ns-timeout", "1s", "Default nameserver timeout")
     var domain = flag.String("domain", "local", "Constrain discodns to a domain")
     flag.Parse()
 
