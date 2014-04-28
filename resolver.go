@@ -80,17 +80,16 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     msg.Authoritative = true
     msg.RecursionAvailable = true
 
+    // We only handle domains we're authoritative for
     if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
         var err error
-        if q.Qclass == dns.ClassINET {
-            if q.Qtype == dns.TypeANY {
-                for rrType, _ := range converters {
-                    err = r.LookupAnswersForType(msg, q, rrType, false)
-                }
-            } else {
-                if _, ok := converters[q.Qtype]; ok {
-                    err = r.LookupAnswersForType(msg, q, q.Qtype, recurse)
-                }
+        if q.Qtype == dns.TypeANY {
+            for rrType, _ := range converters {
+                err = r.LookupAnswersForType(msg, q, rrType, false)
+            }
+        } else {
+            if _, ok := converters[q.Qtype]; ok {
+                err = r.LookupAnswersForType(msg, q, q.Qtype, recurse)
             }
         }
 
