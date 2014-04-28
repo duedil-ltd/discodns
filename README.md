@@ -4,7 +4,7 @@ discodns
 
 A DNS *fowarder* and *nameserver* that first queries an [etcd](http://github.com/coreos/etcd) database of domains and records. It forwards requests it's not authoritative for onto a configured set of upstream nameservers (Google DNS by default).
 
-The authoritative domains are configured using the `-domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `-domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database. Multiple `-domain` arguments will be interpreted as multiple authoritative zones.
+The authoritative domains are configured using the `-domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `-domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database.
 
 #### Key Features
 

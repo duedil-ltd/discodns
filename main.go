@@ -2,6 +2,7 @@ package main
 
 import (
     "github.com/coreos/go-etcd/etcd"
+    "github.com/miekg/dns"
     "runtime"
     "os/signal"
     "os"
@@ -22,7 +23,9 @@ func main() {
     var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
     var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
     var timeout = flag.String("ns-timeout", "1s", "Default nameserver timeout")
-    var domain = flag.String("domain", "local", "Constrain discodns to a domain")
+    var domain = flag.String("domain", "discodns.local", "Constrain discodns to a domain")
+    var authority = flag.String("authority", "dns.discodns.local", "Authoritative DNS server hostname")
+
     flag.Parse()
 
     // Parse the list of nameservers
@@ -33,9 +36,6 @@ func main() {
     if err != nil {
         logger.Fatalf("Failed to parse duration '%s'", timeout)
     }
-
-    // Cleanup the domain
-    root_domain := strings.Trim(*domain, ".") + "."
 
     // Connect to ETCD (wait for a connection)
     etcd := etcd.NewClient(strings.Split(*hosts, ","))
@@ -51,7 +51,8 @@ func main() {
         etcd: etcd,
         rTimeout: nsTimeout,
         wTimeout: nsTimeout,
-        domain: root_domain,
+        domain: dns.Fqdn(*domain),
+        authority: dns.Fqdn(*authority),
         ns: ns}
 
     server.Run()

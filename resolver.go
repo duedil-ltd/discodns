@@ -11,25 +11,11 @@ import (
     "sync"
 )
 
-type NodeConversionError struct {
-    Message string
-    Node *etcd.Node
-    AttemptedType uint16
-}
-
-func (e *NodeConversionError) Error() string {
-    return fmt.Sprintf(
-        "Unable to convert etc Node into a RR of type %d ('%s'): %s. Node details: %+v",
-        e.AttemptedType,
-        dns.TypeToString[e.AttemptedType],
-        e.Message,
-        &e.Node)
-}
-
 type Resolver struct {
     etcd        *etcd.Client
     dns         *dns.Client
     domain      string
+    authority   string
     nameservers []string
     rTimeout    time.Duration
 }
@@ -58,6 +44,22 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     return
 }
 
+// Authority returns a dns.RR describing this authority (SOA)
+func (r *Resolver) Authority() []dns.RR {
+    domain := dns.Fqdn(r.domain)
+    authority := &dns.SOA{Hdr: dns.RR_Header{Name: domain, Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 86400},
+        Ns:      dns.Fqdn(r.authority),
+        Mbox:    domain,
+        Serial:  uint32(time.Now().Truncate(time.Hour).Unix()),
+        Refresh: 10000,
+        Retry:   2400,
+        Expire:  604800,
+        Minttl:  60,
+    }
+
+    return []dns.RR{authority}
+}
+
 // Lookup responds to DNS messages of type Query, with a dns message containing Answers.
 // In the event that the query's value+type yields no known records, this falls back to
 // querying the given nameservers instead.
@@ -75,36 +77,54 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     //  - If the domain is a CNAME (not an A/AAAA) we're going to simply return it
     recurse := req.RecursionDesired
 
-    msg = new(dns.Msg)
-    msg.SetReply(req)
-    msg.Authoritative = true
-    msg.RecursionAvailable = true
-
     // We only handle domains we're authoritative for
     if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
         var err error
+
+        msg = new(dns.Msg)
+        msg.SetReply(req)
+        msg.Authoritative = true
+        msg.RecursionAvailable = true
+
+        // Set the RD bit if we're going to use recursion, this helps the
+        // resolver understand that we did use recursion as they requested
+        if recurse {
+            msg.RecursionDesired = true
+        }
+
         if q.Qtype == dns.TypeANY {
             for rrType, _ := range converters {
                 err = r.LookupAnswersForType(msg, q, rrType, false)
             }
+        } else if q.Qtype == dns.TypeSOA {
+            msg.Ns = r.Authority()
         } else {
             if _, ok := converters[q.Qtype]; ok {
                 err = r.LookupAnswersForType(msg, q, q.Qtype, recurse)
-            }
-        }
 
-        // Handle any errors we might see when trying to do the lookup
-        if err != nil {
-            if e, ok := err.(*etcd.EtcdError); ok {
-                if e.ErrorCode == 100 {
-                    msg.SetRcode(req, dns.RcodeNameError)
+                // Handle any errors we might see when trying to do the lookup
+                if err != nil {
+                    if e, ok := err.(*etcd.EtcdError); ok {
+                        if e.ErrorCode == 100 {
+                            msg.SetRcode(req, dns.RcodeNameError)
+                            msg.Ns = r.Authority()
+                            return
+                        }
+                    }
+
+                    msg.SetRcode(req, dns.RcodeServerFailure)
+                    msg.Ns = r.Authority()
                     return
                 }
             }
-
-            msg.SetRcode(req, dns.RcodeServerFailure)
-            return
         }
+
+        // If we know nothing about this domain, send NXDOMAIN
+        if len(msg.Answer) == 0 {
+            msg.SetRcode(req, dns.RcodeNameError)
+            msg.Ns = r.Authority()
+        }
+
     } else if recurse {
         // Hand off all other queries to the upstream nameservers
         // We're going to query all of them in a goroutine and listen to whoever is fastest
@@ -140,29 +160,43 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
     typeStr := dns.TypeToString[rrType]
     nodes, err := r.GetFromStorage(nameToKey(name, "/." + typeStr))
 
-    // If there are no records found, and we're searching for A/AAAA let's look
-    // for an alias (CNAME)
-    cname := false
-    if (err != nil && err.(*etcd.EtcdError).ErrorCode == 100) || len(nodes) == 0 {
-        if (rrType == dns.TypeA || rrType == dns.TypeAAAA) {
-            cname = true
-            nodes, err = r.GetFromStorage(nameToKey(name, "/." + dns.TypeToString[dns.TypeCNAME]))
+    // If we found what we're looking for, just go ahead and return them.
+    for _, node := range nodes {
+        header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
+        answer, err := converters[rrType](node, header)
+
+        if err != nil {
+            return err
         }
+
+        msg.Answer = append(msg.Answer, answer)
     }
 
-    // Process all of the nodes concurrently
-    var wg sync.WaitGroup
-    answers := make([][]dns.RR, len(nodes))
-    for i, node := range nodes {
-        wg.Add(1)
+    // If there are no answers, and it's a recursive query, let's check for CNAMEs
+    if len(msg.Answer) == 0 && recurse && (rrType == dns.TypeA || rrType == dns.TypeAAAA) {
+        nodes, err = r.GetFromStorage(nameToKey(name, "/." + dns.TypeToString[dns.TypeCNAME]))
 
-        go func(i int, node *etcd.Node) {
-            if recurse && cname {
-                header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: dns.TypeCNAME, Ttl: 0}
-                answer, _ := converters[dns.TypeCNAME](node, header)
-                if answer != nil {
-                    answers[i] = append(answers[i], answer)
+        // Process all of the nodes concurrently
+        var wg sync.WaitGroup
+        answers := make([][]dns.RR, len(nodes))
+        for i, node := range nodes {
+            wg.Add(1)
+
+            go func() {
+
+                // Add the initial CNAME onto the response
+                header := dns.RR_Header{
+                    Name: q.Name,
+                    Class: q.Qclass,
+                    Rrtype: dns.TypeCNAME,
+                    Ttl: 0}
+
+                answer, err := converters[dns.TypeCNAME](node, header)
+                if err != nil {
+                    return
                 }
+
+                answers[i] = append(answers[i], answer)
 
                 // Start a chain of recursive queries to find any leaf A records
                 query := new(dns.Msg)
@@ -173,24 +207,24 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
                 if result != nil {
                     answers[i] = append(answers[i], result.Answer...)
                 }
-            } else if !cname {
-                header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
-                answer, _ := converters[rrType](node, header)
 
-                if answer != nil {
-                    answers[i] = append(answers[i], answer)
-                }
-            }
+                wg.Done()
+            }()
+        }
 
-            wg.Done()
-        }(i, node)
+        wg.Wait()
+
+        // Collect up all of the answers
+        for _, a := range answers {
+            msg.Answer = append(msg.Answer, a...)
+        }
     }
-    wg.Wait()
 
-    // Collect up all of the answers
-    for _, a := range answers {
-        msg.Answer = append(msg.Answer, a...)
-    }
+    // If by this point we've still now found any records, let's recurse up the tree
+    // and find any NS records...
+    // if len(msg.Answer) == 0 && recurse {
+        // TODO(tarnfeld): Query for NS records and forward the query onwards.
+    // }
 
     return
 }
@@ -261,12 +295,12 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
     },
 
     dns.TypeCNAME: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        rr = &dns.CNAME{header, node.Value}
+        rr = &dns.CNAME{header, dns.Fqdn(node.Value)}
         return
     },
 
     dns.TypeNS: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        rr = &dns.NS{header, node.Value}
+        rr = &dns.NS{header, dns.Fqdn(node.Value)}
         return
     },
 }

@@ -13,36 +13,20 @@ type Server struct {
     etcd        *etcd.Client
     ns          []string
     domain      string
+    authority   string
     rTimeout    time.Duration
     wTimeout    time.Duration
 }
 
 type Handler struct {
-    server  *Server
-    net     string
-    dns     *dns.Client
-}
-
-func (h *Handler) DNSClient() *dns.Client {
-    if h.dns == nil {
-        h.dns = &dns.Client{Net: h.net}
-    }
-    return h.dns
+    net         string
+    resolver    *Resolver
 }
 
 func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
-
-    resolver := &Resolver{
-        etcd: h.server.etcd,
-        dns: h.DNSClient(),
-        domain: h.server.domain,
-        nameservers: h.server.ns,
-        rTimeout: h.server.rTimeout,
-    }
-
     // Lookup the dns record for the request
     // This method will add any answers to the message
-    msg := resolver.Lookup(req)
+    msg := h.resolver.Lookup(req)
 
     if msg != nil {
         response.WriteMsg(msg)
@@ -55,14 +39,26 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-    tcpDNShandler := &Handler{server: s, net: "tcp"}
+    resolver := func (s *Server, client *dns.Client) *Resolver {
+        return &Resolver{
+            etcd: s.etcd,
+            dns: client,
+            domain: s.domain,
+            nameservers: s.ns,
+            authority: s.authority,
+            rTimeout: s.rTimeout,
+        }
+    }
 
-    tcpHandler := dns.NewServeMux()
-    tcpHandler.HandleFunc(".", tcpDNShandler.Handle)
-
-    udpDNShandler := &Handler{server: s, net: "udp"}
+    tcpDNShandler := &Handler{resolver: resolver(s, &dns.Client{Net: "tcp"})}
+    udpDNShandler := &Handler{resolver: resolver(s, &dns.Client{Net: "udp"})}
 
     udpHandler := dns.NewServeMux()
+    tcpHandler := dns.NewServeMux()
+
+    // TODO(tarnfeld): Perhaps we could move up resolution of "." to here and
+    //                 specifically only call our handler for s.domain?
+    tcpHandler.HandleFunc(".", tcpDNShandler.Handle)
     udpHandler.HandleFunc(".", udpDNShandler.Handle)
 
     tcpServer := &dns.Server{Addr: s.Addr(),
