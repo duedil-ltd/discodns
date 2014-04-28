@@ -143,7 +143,7 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
     // If there are no records found, and we're searching for A/AAAA let's look
     // for an alias (CNAME)
     cname := false
-    if err != nil && err.(*etcd.EtcdError).ErrorCode == 100 {
+    if (err != nil && err.(*etcd.EtcdError).ErrorCode == 100) || len(nodes) == 0 {
         if (rrType == dns.TypeA || rrType == dns.TypeAAAA) {
             cname = true
             nodes, err = r.GetFromStorage(nameToKey(name, "/." + dns.TypeToString[dns.TypeCNAME]))
