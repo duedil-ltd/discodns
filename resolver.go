@@ -173,10 +173,13 @@ func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uin
                 if result != nil {
                     answers[i] = append(answers[i], result.Answer...)
                 }
-            } else {
+            } else if !cname {
                 header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
                 answer, _ := converters[rrType](node, header)
-                answers[i] = append(answers[i], answer)
+
+                if answer != nil {
+                    answers[i] = append(answers[i], answer)
+                }
             }
 
             wg.Done()
