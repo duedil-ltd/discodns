@@ -2,11 +2,24 @@
 discodns
 ======
 
-A DNS resolver that first queries a populated database of names and records, then falls back onto a list of configured nameservers - google DNS by default. This is a great tool to aid development of service discovery systems, without imposing any restrictions on domain structure or architecture.
+A DNS *fowarder* and *nameserver* that first queries an [etcd](http://github.com/coreos/etcd) database of domains and records. It forwards requests it's not authoritative for onto a configured set of upstream nameservers (Google DNS by default).
+
+The authoritative domains are configured using the `-domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `-domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database. Multiple `-domain` arguments will be interpreted as multiple authoritative zones.
+
+#### Key Features
+
+- Support for recursive and non-recursive queries
+- Full support for `NS` and `CNAME` records for internal delegation
+- Full support for both IPv4 and IPv6 addresses
+- Multiple resource records of different types per domain
+
+### Why is this useful?
+
+We built discodns to be the backbone of our internal infrastructure, providing us with a robust and distributed Domain Name System to use. It allows us to register domains in any format, without imposing restrictions on how hosts/services must be named.
 
 ### Why etcd?
 
-The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with some very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services should use etcd to public and watch for changes to records and act accordingly.
+The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with some very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services can utilize the same etcd cluster to both publish and subscribe to changes in the domain name system.
 
 ## Getting Started
 
