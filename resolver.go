@@ -33,6 +33,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     }
 
     if response.Node.Dir == true {
+        // TODO(orls): Does this need to convert to a slice?
         nodes = make([]*etcd.Node, len(response.Node.Nodes))
         for i := 0; i < len(response.Node.Nodes); i++ {
             nodes[i] = &response.Node.Nodes[i]
@@ -67,165 +68,326 @@ func (r *Resolver) Authority() []dns.RR {
 func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     q := req.Question[0]
 
-    // Figure out if recursion is desired
-    // If it is
-    //  - We'll push any domains not under r.domain to the upstream resolvers
-    //  - If the domain is a CNAME
-    //    - If it points to something within r.domain we're going to resolve it
-    //    - If it points to something outside we're going to resolve upstream
-    // If not, we're not going to perform any further requests, this means
-    //  - If the domain isn't within r.domain we ignore it completely
-    //  - If the domain is a CNAME (not an A/AAAA) we're going to simply return it
-    recurse := req.RecursionDesired
+    msg = new(dns.Msg)
+    msg.SetReply(req)
+    msg.Authoritative = true
+    msg.RecursionAvailable = true
 
-    // We only handle domains we're authoritative for
-    if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
-        var err error
+    // Set the RD bit if we're going to use recursion, this helps the
+    // resolver understand that we did actually use recursion, as they asked.
+    if req.RecursionDesired {
+        msg.RecursionDesired = true
+    }
 
-        msg = new(dns.Msg)
-        msg.SetReply(req)
-        msg.Authoritative = true
-        msg.RecursionAvailable = true
+    wait := sync.WaitGroup{}
+    answers := make(chan dns.RR)
+    authorities := make(chan dns.RR)
+    errors := make(chan error)
 
-        // Set the RD bit if we're going to use recursion, this helps the
-        // resolver understand that we did use recursion as they requested
-        if recurse {
-            msg.RecursionDesired = true
-        }
+    // Spawn a goroutine to close the channel as soon as all of the things
+    // are done. This allows us to ensure we'll wait for all workers to finish
+    // but allows us to collect up answers concurrently.
+    go func() {
+        wait.Wait()
 
-        if q.Qtype == dns.TypeANY {
-            for rrType, _ := range converters {
-                err = r.LookupAnswersForType(msg, q, rrType, false)
+        debugMsg("Finished processing all goroutines, closing channels")
+        close(answers)
+        close(authorities)
+        close(errors)
+    }()
+
+    if q.Qclass == dns.ClassINET {
+        r.AnswerQuestion(req.RecursionDesired, answers, errors, authorities, q, &wait)
+    }
+
+    // Collect up all of the answers and any errors
+    done := 0
+    for done < 3 {
+        select {
+        case rr, ok := <-answers:
+            if ok {
+                msg.Answer = append(msg.Answer, rr)
+            } else {
+                done++
             }
-        } else if q.Qtype == dns.TypeSOA {
-            msg.Ns = r.Authority()
-        } else {
-            if _, ok := converters[q.Qtype]; ok {
-                err = r.LookupAnswersForType(msg, q, q.Qtype, recurse)
+        case authority, ok := <-authorities:
+            if ok {
+                msg.Ns = []dns.RR{authority}
+            } else {
+                done++
+            }
+        case err, ok := <-errors:
+            if ok {
+                debugMsg("Error")
+                debugMsg(err)
+            } else {
+                done++
+            }
+        }
+    }
 
-                // Handle any errors we might see when trying to do the lookup
-                if err != nil {
-                    if e, ok := err.(*etcd.EtcdError); ok {
-                        if e.ErrorCode == 100 {
-                            msg.SetRcode(req, dns.RcodeNameError)
-                            msg.Ns = r.Authority()
-                            return
-                        }
-                    }
+    // If we've not found any answers
+    if len(msg.Answer) == 0 {
+        msg = nil
+        // msg.SetRcode(req, dns.RcodeNameError)
 
-                    msg.SetRcode(req, dns.RcodeServerFailure)
-                    msg.Ns = r.Authority()
-                    return
+        // // If the domain query was within our authority, we need to send our SOA record
+        // if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
+        //     msg.Ns = r.Authority()
+        // }
+    }
+
+    return
+}
+
+// ResolveToIp accepts a string name (either an existing IPv4/6 address or a
+// fully qualified domain) which is then resolved to a `net.IP` structure.
+func (r *Resolver) ResolveToIP(name string) (ip net.IP) {
+    debugMsg("Resolving " + name + " to IP")
+
+    ip = net.ParseIP(name)
+    if ip == nil {
+        request := new(dns.Msg)
+        request.Question = append(request.Question, dns.Question{
+            Name: name,
+            Qtype: dns.TypeA,
+            Qclass: dns.ClassINET})
+
+        // Let's enable recursion, if the name is not within the authority of
+        // this server, we'll have to do much less effort.
+        request.RecursionDesired = true
+
+        result := r.Lookup(request)
+        if len(result.Answer) > 0 {
+            for _, answer := range result.Answer {
+                if answer.Header().Rrtype == dns.TypeA {
+                    ip = answer.(*dns.A).A
+                    break
                 }
             }
         }
 
-        // If we know nothing about this domain, send NXDOMAIN
-        if len(msg.Answer) == 0 {
-            msg.SetRcode(req, dns.RcodeNameError)
-            msg.Ns = r.Authority()
-        }
-
-    } else if recurse {
-        // Hand off all other queries to the upstream nameservers
-        // We're going to query all of them in a goroutine and listen to whoever is fastest
-        // TODO(tarnfeld): We should maintain an RTT for each nameserver and go by that
-        c := make(chan *dns.Msg)
-        for _, nameserver := range r.nameservers {
-            go r.LookupNameserver(c, req, nameserver)
-        }
-
-        timeout := time.After(r.rTimeout)
-        select {
-        case result := <-c:
-            return result
-        case <-timeout:
-            return
+        if !result.RecursionAvailable && ip == nil {
+            // If the server didn't return any A records, and they told us they
+            // didn't use recursion to find an answer, we'll have to iterate.
+            // TODO(tarnfeld): We need to implement this. Pretty rare case, though.
         }
     }
 
     return
 }
 
-func (r *Resolver) LookupNameserver(c chan *dns.Msg, req *dns.Msg, ns string) {
-    msg, _, err := r.dns.Exchange(req, ns)
-    if err != nil {
-        return
+// QueryNameservers will query the given list of nameservers in parallel and
+// return *the namesever that responds first*.
+// 
+// TODO(tarnfeld): This doesn't support iterative queries, if the query wants recursion
+//                 but the server won't give it, iterate here.
+func (r *Resolver) QueryNameservers(q *dns.Msg, ns []string) (msg *dns.Msg, err *error) {
+    c := make(chan *dns.Msg)
+    e := make(chan *error)
+    for _, nameserver := range ns {
+        go func(server string) {
+            defer func() { recover() }()
+
+            // Ensure we've got an IP address here, if not then try and resolve
+            // the DNS name.
+            ip := r.ResolveToIP(server)
+            if ip != nil {
+                msg, _, err := r.dns.Exchange(q, ip.String() + ":53")
+
+                if err != nil {
+                    e <- &err
+                } else {
+                    c <- msg
+                }
+            }
+        }(nameserver)
     }
-    c <- msg
+
+    // Wait for one of the nameservers to respond, or until we hit the configured timeout.
+    timeout := time.NewTimer(r.rTimeout)
+forever:
+    for {
+        select {
+        case msg = <-c:
+            timeout.Stop()
+            break forever
+        case err = <-e:
+            timeout.Stop()
+            break forever
+        case <-timeout.C:
+        }
+    }
+
+    // We close both the channels, this forces us to clear up any of the above goroutines
+    // once they finished processing any work. We do this, because otherwise as soon
+    // as this function returns, nothing can ever recv() on `c` or `e`.
+    // This is a memory leak.
+    close(c)
+    close(e)
+
+    return
 }
 
-func (r *Resolver) LookupAnswersForType(msg *dns.Msg, q dns.Question, rrType uint16, recurse bool) (err error) {
-    name := strings.ToLower(q.Name)
+// AnswerQuestion takes two channels, one for answers and one for errors. It will answer the
+// given question writing the answers as dns.RR structures, and any errors it encounters along
+// the way. The function will return immediately, and spawn off a bunch of goroutines
+// to do the work, when using this function one should use a WaitGroup to know when all work
+// has been completed.
+func (r *Resolver) AnswerQuestion(recurse bool, answers chan dns.RR, errors chan error, authorities chan dns.RR, q dns.Question, wg *sync.WaitGroup) {
+
+    if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
+        if q.Qtype == dns.TypeANY {
+            wg.Add(len(converters))
+
+            for rrType, _ := range converters {
+                go func(rrType uint16) {
+                    defer func() { recover() }()
+                    defer wg.Done()
+
+                    results, err := r.LookupAnswersForType(q.Name, rrType)
+                    if err != nil {
+                        errors <- err
+                    } else {
+                        for _, answer := range results {
+                            answers <- answer
+                        }
+                    }
+                }(rrType)
+            }
+        } else if _, ok := converters[q.Qtype]; ok {
+            wg.Add(1)
+
+            go func() {
+                defer func() { recover() }()
+                defer wg.Done()
+
+                records, err := r.LookupAnswersForType(q.Name, q.Qtype)
+                if err != nil {
+                    errors <- err
+                } else {
+                    // We're only going to recurse if;
+                    //  - We've found no records
+                    //  - The client has requested recursion
+                    //  - The query is NOT for a CNAME or NS record
+                    if len(records) > 0 {
+                        for _, rr := range records {
+                            answers <- rr
+                        }
+                    } else if recurse && q.Qtype != dns.TypeCNAME && q.Qtype != dns.TypeNS {
+
+                        // Check for any aliases
+                        cnames, err := r.LookupAnswersForType(q.Name, dns.TypeCNAME)
+                        if err != nil {
+                            errors <- err
+                        } else if len(cnames) > 0 {
+                            answers <- cnames[0] // Add the hop we've made
+
+                            if cname, ok := cnames[0].(*dns.CNAME); ok {
+                                // Kick off the recursive query
+                                r.AnswerQuestion(true, answers, errors, authorities, dns.Question{
+                                    Name: cname.Target,
+                                    Qtype: q.Qtype,
+                                    Qclass: q.Qclass}, wg)
+                            }
+                        } else {
+                            // Check for delegated nameservers
+                            tree := strings.Split(q.Name, ".")
+                            for i, _ := range tree {
+                                subdomain := strings.Join(tree[i:], ".")
+                                debugMsg("Looking for NS records at " + subdomain)
+
+                                ns, err := r.LookupAnswersForType(subdomain, dns.TypeNS)
+                                if err != nil {
+                                    errors <- err
+                                } else if len(ns) > 0 {
+                                    query := new(dns.Msg)
+                                    query.SetQuestion(q.Name, q.Qtype)
+                                    query.RecursionDesired = true
+
+                                    nameservers := make([]string, 1)
+                                    nameservers[0] = ns[0].(*dns.NS).Ns
+
+                                    debugMsg("Forwarding request onto " + strings.Join(nameservers, " "))
+                                    msg, err := r.QueryNameservers(query, nameservers)
+                                    if err != nil {
+                                        errors <- *err
+                                    } else {
+                                        for _, rr := range msg.Answer {
+                                            answers <- rr
+                                        }
+                                        for _, soa := range msg.Ns {
+                                            authorities <- soa
+                                        }
+                                    }
+
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }()
+        }
+    } else if recurse {
+        // Hand off all other queries to the upstream nameservers
+        // We're going to query all of them in a goroutine and listen to whoever is fastest
+        // TODO(tarnfeld): We should maintain an RTT for each nameserver and go by that
+
+        wg.Add(1)
+        go func() {
+            defer func() { recover() }()
+            defer wg.Done()
+
+            request := new(dns.Msg)
+            request.RecursionDesired = recurse
+            request.Question = []dns.Question{q}
+
+            msg, err := r.QueryNameservers(request, r.nameservers)
+            if err != nil {
+                errors <- *err
+            } else {
+                for _, answer := range msg.Answer {
+                    answers <- answer
+                }
+                for _, soa := range msg.Ns {
+                    authorities <- soa
+                }
+            }
+        }()
+    }
+}
+
+func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []dns.RR, err error) {
+    name = strings.ToLower(name)
+
 
     typeStr := dns.TypeToString[rrType]
     nodes, err := r.GetFromStorage(nameToKey(name, "/." + typeStr))
 
-    // If we found what we're looking for, just go ahead and return them.
-    for _, node := range nodes {
-        header := dns.RR_Header{Name: q.Name, Class: q.Qclass, Rrtype: rrType, Ttl: 0}
+    if err != nil {
+        if e, ok := err.(*etcd.EtcdError); ok {
+            if e.ErrorCode == 100 {
+                return answers, nil
+            }
+        }
+
+        return
+    }
+
+    answers = make([]dns.RR, len(nodes))
+    for i, node := range nodes {
+
+        // TODO(tarnfeld): TTL 0 - make this configurable
+        header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: 0}
         answer, err := converters[rrType](node, header)
 
         if err != nil {
-            return err
+            return nil, err
         }
 
-        msg.Answer = append(msg.Answer, answer)
+        answers[i] = answer
     }
-
-    // If there are no answers, and it's a recursive query, let's check for CNAMEs
-    if len(msg.Answer) == 0 && recurse && (rrType == dns.TypeA || rrType == dns.TypeAAAA) {
-        nodes, err = r.GetFromStorage(nameToKey(name, "/." + dns.TypeToString[dns.TypeCNAME]))
-
-        // Process all of the nodes concurrently
-        var wg sync.WaitGroup
-        answers := make([][]dns.RR, len(nodes))
-        for i, node := range nodes {
-            wg.Add(1)
-
-            go func() {
-
-                // Add the initial CNAME onto the response
-                header := dns.RR_Header{
-                    Name: q.Name,
-                    Class: q.Qclass,
-                    Rrtype: dns.TypeCNAME,
-                    Ttl: 0}
-
-                answer, err := converters[dns.TypeCNAME](node, header)
-                if err != nil {
-                    return
-                }
-
-                answers[i] = append(answers[i], answer)
-
-                // Start a chain of recursive queries to find any leaf A records
-                query := new(dns.Msg)
-                query.SetQuestion(node.Value, rrType)
-                query.RecursionDesired = true
-
-                result := r.Lookup(query)
-                if result != nil {
-                    answers[i] = append(answers[i], result.Answer...)
-                }
-
-                wg.Done()
-            }()
-        }
-
-        wg.Wait()
-
-        // Collect up all of the answers
-        for _, a := range answers {
-            msg.Answer = append(msg.Answer, a...)
-        }
-    }
-
-    // If by this point we've still now found any records, let's recurse up the tree
-    // and find any NS records...
-    // if len(msg.Answer) == 0 && recurse {
-        // TODO(tarnfeld): Query for NS records and forward the query onwards.
-    // }
 
     return
 }
@@ -266,6 +428,7 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
         } else {
             rr = &dns.A{header, ip}
         }
+
         return
     },
 

@@ -44,7 +44,7 @@ func main() {
         logger.Fatalf("Failed to parse duration '%s'", timeout)
     }
 
-    // Connect to ETCD (wait for a connection)
+    // Create an ETCD client
     etcd := etcd.NewClient(strings.Split(*hosts, ","))
 
     if !etcd.SyncCluster() {

@@ -43,10 +43,14 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-    resolver := func (s *Server, client *dns.Client) *Resolver {
+    resolver := func (s *Server, net string) *Resolver {
         return &Resolver{
             etcd: s.etcd,
-            dns: client,
+            dns: &dns.Client{
+                Net: net,
+                DialTimeout: s.rTimeout,
+                ReadTimeout: s.rTimeout,
+                WriteTimeout: s.wTimeout},
             domain: s.domain,
             nameservers: s.ns,
             authority: s.authority,
@@ -54,8 +58,8 @@ func (s *Server) Run() {
         }
     }
 
-    tcpDNShandler := &Handler{resolver: resolver(s, &dns.Client{Net: "tcp"})}
-    udpDNShandler := &Handler{resolver: resolver(s, &dns.Client{Net: "udp"})}
+    tcpDNShandler := &Handler{resolver: resolver(s, "tcp")}
+    udpDNShandler := &Handler{resolver: resolver(s, "udp")}
 
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()
@@ -83,7 +87,6 @@ func (s *Server) Run() {
 }
 
 func (s *Server) start(ds *dns.Server) {
-
     err := ds.ListenAndServe()
     if err != nil {
         logger.Fatalf("Start %s listener on %s failed:%s", ds.Net, s.Addr(), err.Error())
