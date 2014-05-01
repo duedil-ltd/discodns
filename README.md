@@ -14,6 +14,13 @@ The authoritative domains are configured using the `-domain` argument to the ser
 - Multiple resource records of different types per domain
 - Support for recursive and non-recursive DNS queries
 
+#### Coming Soon
+
+- Metrics (can be shipped to statsd/graphite)
+- Support for wildcard domains
+- Support for multiple authoritative domains
+- Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
+
 ### Why is this useful?
 
 We built discodns to be the backbone of our internal infrastructure, providing us with a robust and distributed Domain Name System to use. It allows us to register domains in any format, without imposing restrictions on how hosts/services must be named.
