@@ -35,7 +35,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
         // TODO(orls): Does this need to convert to a slice?
         nodes = make([]*etcd.Node, len(response.Node.Nodes))
         for i := 0; i < len(response.Node.Nodes); i++ {
-            nodes[i] = &response.Node.Nodes[i]
+            nodes[i] = response.Node.Nodes[i]
         }
     } else {
         nodes = make([]*etcd.Node, 1)
