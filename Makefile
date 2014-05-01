@@ -1,5 +1,5 @@
 all::   clean build
-build:: compile test
+build:: compile
 
 clean:
 	@echo "\033[34m●\033[39m Cleaning out the build folder ./build"
@@ -12,5 +12,7 @@ compile:
 	go build -o build/bin/discodns *.go
 	@echo "\033[32m✔\033[39m Successfully built into ./build"
 
-test:
-	@echo -n
+install:
+	@echo "\033[34m●\033[39m Installing into /usr/local/bin"
+	cp build/bin/discodns /usr/local/bin/
+	@echo "\033[32m✔\033[39m Successfully installed into /usr/local/bin/discodns"
