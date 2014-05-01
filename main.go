@@ -21,7 +21,7 @@ func main() {
     var addr = flag.String("listen", "0.0.0.0", "Listen IP address")
     var port = flag.Int("port", 53, "Port to listen on")
     var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
-    var nameservers = flag.String("ns", "8.8.8.8:53", "Fallback nameservers (comma separated)")
+    var nameservers = flag.String("ns", "8.8.8.8,8.8.4.4", "Fallback nameservers (comma separated)")
     var timeout = flag.String("ns-timeout", "1s", "Default nameserver timeout")
     var domain = flag.String("domain", "discodns.local", "Constrain discodns to a domain")
     var authority = flag.String("authority", "dns.discodns.local", "Authoritative DNS server hostname")
