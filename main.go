@@ -2,69 +2,71 @@ package main
 
 import (
     "github.com/coreos/go-etcd/etcd"
-    "github.com/miekg/dns"
+    "github.com/jessevdk/go-flags"
     "runtime"
     "os/signal"
     "os"
-    "strings"
     "log"
-    "flag"
     "time"
 )
 
 var (
     logger = log.New(os.Stderr, "[discodns] ", log.Ldate|log.Ltime)
     log_debug = false
+
+    // Define all of the command line arguments
+    Options struct {
+        ListenAddress   string      `short:"l" long:"listen" description:"Listen IP address" default:"0.0.0.0"`
+        ListenPort      int         `short:"p" long:"port" description:"Port to listen on" default:"53"`
+        EtcdHosts       []string    `short:"e" long:"etcd" description:"host:port for etcd hosts" default:"127.0.0.1:4001"`
+        Nameservers     []string    `short:"n" long:"ns" description:"Upstream nameservers for forwarding"`
+        Timeout         string      `short:"t" long:"ns-timeout" description:"Default forwarding timeout" default:"1s"`
+        Domain          []string    `short:"d" long:"domain" description:"Domain for this server to be authoritative over"`
+        Debug           bool        `short:"v" long:"debug" description:"Enable debug logging"`
+    }
 )
 
 func main() {
 
-    var addr = flag.String("listen", "0.0.0.0", "Listen IP address")
-    var port = flag.Int("port", 53, "Port to listen on")
-    var hosts = flag.String("etcd", "0.0.0.0:4001", "List of etcd hosts (comma separated)")
-    var nameservers = flag.String("ns", "8.8.8.8,8.8.4.4", "Fallback nameservers (comma separated)")
-    var timeout = flag.String("ns-timeout", "1s", "Default nameserver timeout")
-    var domain = flag.String("domain", "discodns.local", "Constrain discodns to a domain")
-    var authority = flag.String("authority", "dns.discodns.local", "Authoritative DNS server hostname")
-    var debug = flag.Bool("debug", false, "Enable debug logging")
+    _, err := flags.ParseArgs(&Options, os.Args[1:])
+    if err != nil {
+        os.Exit(1)
+    }
 
-    flag.Parse()
-
-    if *debug {
+    if Options.Debug {
         log_debug = true
         debugMsg("Debug mode enabled")
     }
 
-    // Parse the list of nameservers
-    ns := strings.Split(*nameservers, ",")
-
     // Parse the timeout string
-    nsTimeout, err := time.ParseDuration(*timeout)
+    nsTimeout, err := time.ParseDuration(Options.Timeout)
     if err != nil {
-        logger.Fatalf("Failed to parse duration '%s'", timeout)
+        logger.Fatalf("Failed to parse duration '%s'", Options.Timeout)
+    }
+
+    if len(Options.Nameservers) == 0 {
+        logger.Fatalf("Upstream nameservers are required with -n")
     }
 
     // Create an ETCD client
-    etcd := etcd.NewClient(strings.Split(*hosts, ","))
-
+    etcd := etcd.NewClient(Options.EtcdHosts)
     if !etcd.SyncCluster() {
         logger.Printf("[WARNING] Failed to connect to etcd cluster at launch time")
     }
 
     // Start up the DNS resolver server
     server := &Server{
-        addr: *addr,
-        port: *port,
+        addr: Options.ListenAddress,
+        port: Options.ListenPort,
         etcd: etcd,
         rTimeout: nsTimeout,
         wTimeout: nsTimeout,
-        domain: dns.Fqdn(*domain),
-        authority: dns.Fqdn(*authority),
-        ns: ns}
+        domains: Options.Domain,
+        ns: Options.Nameservers}
 
     server.Run()
 
-    logger.Printf("Listening on %s:%d\n", *addr, *port)
+    logger.Printf("Listening on %s:%d\n", Options.ListenAddress, Options.ListenPort)
 
     sig := make(chan os.Signal)
     signal.Notify(sig, os.Interrupt)

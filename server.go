@@ -12,8 +12,7 @@ type Server struct {
     port        int
     etcd        *etcd.Client
     ns          []string
-    domain      string
-    authority   string
+    domains     []string
     rTimeout    time.Duration
     wTimeout    time.Duration
 }
@@ -51,9 +50,8 @@ func (s *Server) Run() {
                 DialTimeout: s.rTimeout,
                 ReadTimeout: s.rTimeout,
                 WriteTimeout: s.wTimeout},
-            domain: s.domain,
+            domains: s.domains,
             nameservers: s.ns,
-            authority: s.authority,
             rTimeout: s.rTimeout,
         }
     }
@@ -64,8 +62,6 @@ func (s *Server) Run() {
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()
 
-    // TODO(tarnfeld): Perhaps we could move up resolution of "." to here and
-    //                 specifically only call our handler for s.domain?
     tcpHandler.HandleFunc(".", tcpDNShandler.Handle)
     udpHandler.HandleFunc(".", udpDNShandler.Handle)
 

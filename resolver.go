@@ -14,8 +14,7 @@ import (
 type Resolver struct {
     etcd        *etcd.Client
     dns         *dns.Client
-    domain      string
-    authority   string
+    domains     []string
     nameservers []string
     rTimeout    time.Duration
 }
@@ -46,20 +45,37 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     return
 }
 
-// Authority returns a dns.RR describing this authority (SOA)
-func (r *Resolver) Authority() []dns.RR {
-    domain := dns.Fqdn(r.domain)
-    authority := &dns.SOA{Hdr: dns.RR_Header{Name: domain, Rrtype: dns.TypeSOA, Class: dns.ClassINET, Ttl: 86400},
-        Ns:      dns.Fqdn(r.authority),
-        Mbox:    domain,
-        Serial:  uint32(time.Now().Truncate(time.Hour).Unix()),
-        Refresh: 10000,
-        Retry:   2400,
-        Expire:  604800,
-        Minttl:  60,
+// Authority returns a dns.RR describing the know authority for the given
+// domain. It will recurse up the domain structure to find an SOA record that
+// matches.
+func (r *Resolver) Authority(domain string) []dns.RR {
+    // tree := strings.Split(domain, ".")
+    // for i, _ := range tree {
+    //     subdomain := strings.Join(tree[i:], ".")
+    //     answers, _ := r.LookupAnswersForType(subdomain, dns.TypeSOA)
+
+    //     if len(answers) > 0 {
+    //         for _, answer := range answers {
+    //             answer.(*dns.SOA).Serial = uint32(time.Now().Truncate(time.Hour).Unix())
+    //         }
+
+    //         return answers
+    //     }
+    // }
+
+    return make([]dns.RR, 0)
+}
+
+// IsAuthoritative will return true if this discodns server is authoritative
+// for the given domain name.
+func (r *Resolver) IsAuthoritative(name string) (bool) {
+    for _, domain := range r.domains {
+        if strings.HasSuffix(strings.ToLower(name), domain) {
+            return true
+        }
     }
 
-    return []dns.RR{authority}
+    return false
 }
 
 // Lookup responds to DNS messages of type Query, with a dns message containing Answers.
@@ -84,6 +100,10 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     authorities := make(chan dns.RR)
     errors := make(chan error)
 
+    if q.Qclass == dns.ClassINET {
+        r.AnswerQuestion(req.RecursionDesired, answers, errors, authorities, q, &wait)
+    }
+
     // Spawn a goroutine to close the channel as soon as all of the things
     // are done. This allows us to ensure we'll wait for all workers to finish
     // but allows us to collect up answers concurrently.
@@ -95,10 +115,6 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
         close(authorities)
         close(errors)
     }()
-
-    if q.Qclass == dns.ClassINET {
-        r.AnswerQuestion(req.RecursionDesired, answers, errors, authorities, q, &wait)
-    }
 
     // Collect up all of the answers and any errors
     done := 0
@@ -128,13 +144,12 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
     // If we've not found any answers
     if len(msg.Answer) == 0 {
-        msg = nil
-        // msg.SetRcode(req, dns.RcodeNameError)
+        msg.SetRcode(req, dns.RcodeNameError)
 
-        // // If the domain query was within our authority, we need to send our SOA record
-        // if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
-        //     msg.Ns = r.Authority()
-        // }
+        // If the domain query was within our authority, we need to send our SOA record
+        if r.IsAuthoritative(q.Name) {
+            msg.Ns = r.Authority(q.Name)
+        }
     }
 
     return
@@ -236,7 +251,8 @@ forever:
 // has been completed.
 func (r *Resolver) AnswerQuestion(recurse bool, answers chan dns.RR, errors chan error, authorities chan dns.RR, q dns.Question, wg *sync.WaitGroup) {
 
-    if strings.HasSuffix(strings.ToLower(q.Name), r.domain) {
+    debugMsg("Answering question ", q)
+    if r.IsAuthoritative(q.Name) {
         if q.Qtype == dns.TypeANY {
             wg.Add(len(converters))
 
@@ -277,6 +293,7 @@ func (r *Resolver) AnswerQuestion(recurse bool, answers chan dns.RR, errors chan
                     } else if recurse && q.Qtype != dns.TypeCNAME && q.Qtype != dns.TypeNS {
 
                         // Check for any aliases
+                        debugMsg("Looking for CNAME records at " + q.Name)
                         cnames, err := r.LookupAnswersForType(q.Name, dns.TypeCNAME)
                         if err != nil {
                             errors <- err
@@ -360,7 +377,6 @@ func (r *Resolver) AnswerQuestion(recurse bool, answers chan dns.RR, errors chan
 
 func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []dns.RR, err error) {
     name = strings.ToLower(name)
-
 
     typeStr := dns.TypeToString[rrType]
     nodes, err := r.GetFromStorage(nameToKey(name, "/." + typeStr))

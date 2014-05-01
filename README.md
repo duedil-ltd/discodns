@@ -4,7 +4,7 @@ discodns
 
 A DNS *fowarder* and *nameserver* that first queries an [etcd](http://github.com/coreos/etcd) database of domains and records. It forwards requests it's not authoritative for onto a configured set of upstream nameservers (Google DNS by default).
 
-The authoritative domains are configured using the `-domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `-domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database.
+The authoritative domains are configured using the `--domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `--domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database.
 
 #### Key Features
 
@@ -49,7 +49,7 @@ It's as simple as launching the binary to start a DNS server listening on port 5
 
 ````shell
 cd discodns/build/
-sudo ./bin/discodns -domain=discodns.net
+sudo ./bin/discodns --domain=discodns.net --ns=8.8.8.8 --ns=8.8.4.4
 ````
 
 ### Try it out
@@ -72,7 +72,7 @@ curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.A/foobar -XPUT -d value="10.
 discodns.net.     0   IN  A   10.1.1.1
 ````
 
-#### Authority
+### Authority
 
 If you're not familiar with the DNS specification, to support correct DNS Delegation using `NS` records, each top level domain needs to have it's own `SOA` record (stands for Start Of Authority) to asset it's authority. Since discodns can support multiple authoritative domains, it's up to you to enter this `SOA` record for each domain you use. Here's an example of creating this record for `discodns.net.`.
 
