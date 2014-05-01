@@ -48,7 +48,7 @@ func main() {
     etcd := etcd.NewClient(strings.Split(*hosts, ","))
 
     if !etcd.SyncCluster() {
-        logger.Fatalf("Failed to connect to etcd cluster at launch time")
+        logger.Printf("[WARNING] Failed to connect to etcd cluster at launch time")
     }
 
     // Start up the DNS resolver server
