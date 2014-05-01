@@ -8,10 +8,11 @@ The authoritative domains are configured using the `-domain` argument to the ser
 
 #### Key Features
 
-- Support for recursive and non-recursive queries
-- Full support for `NS` and `CNAME` records for internal delegation
+- Full support for `CNAME` alias records
+- Full support for both `NS` and `SOA` records for delegation either between discodns servers, or others.
 - Full support for both IPv4 and IPv6 addresses
 - Multiple resource records of different types per domain
+- Support for recursive and non-recursive DNS queries
 
 ### Why is this useful?
 
