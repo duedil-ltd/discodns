@@ -1,10 +1,15 @@
 all::   clean build
-build:: compile
+build:: get compile
 
 clean:
 	@echo "\033[34m●\033[39m Cleaning out the build folder ./build"
 	rm -rf build/*
 	@echo "\033[32m✔\033[39m Cleaned ./build"
+
+get:
+	@echo "\033[34m●\033[39m Downloading go packages"
+	go get -d
+	@echo "\033[32m✔\033[39m Finished downloading packages"
 
 compile:
 	@echo "\033[34m●\033[39m Building into ./build"

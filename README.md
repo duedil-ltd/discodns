@@ -37,7 +37,6 @@ The discodns project is written in Go, and uses an extensive library ([miekg/dns
 
 ````shell
 cd discodns
-go get  # Ignore the error about installing discodns
 make
 ````
 
