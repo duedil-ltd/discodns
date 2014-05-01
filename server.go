@@ -24,13 +24,17 @@ type Handler struct {
 }
 
 func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
+    debugMsg("Handling incoming query for domain " + req.Question[0].Name)
+
     // Lookup the dns record for the request
     // This method will add any answers to the message
     msg := h.resolver.Lookup(req)
-
     if msg != nil {
         response.WriteMsg(msg)
     }
+
+    response.Close()
+    debugMsg("Sent response to ", response.RemoteAddr())
 }
 
 func (s *Server) Addr() string {

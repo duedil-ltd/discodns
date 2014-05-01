@@ -13,7 +13,8 @@ import (
 )
 
 var (
-    logger = log.New(os.Stdout, "[discodns] ", log.Ldate|log.Ltime)
+    logger = log.New(os.Stderr, "[discodns] ", log.Ldate|log.Ltime)
+    log_debug = false
 )
 
 func main() {
@@ -25,8 +26,14 @@ func main() {
     var timeout = flag.String("ns-timeout", "1s", "Default nameserver timeout")
     var domain = flag.String("domain", "discodns.local", "Constrain discodns to a domain")
     var authority = flag.String("authority", "dns.discodns.local", "Authoritative DNS server hostname")
+    var debug = flag.Bool("debug", false, "Enable debug logging")
 
     flag.Parse()
+
+    if *debug {
+        log_debug = true
+        debugMsg("Debug mode enabled")
+    }
 
     // Parse the list of nameservers
     ns := strings.Split(*nameservers, ",")
@@ -69,6 +76,15 @@ forever:
             logger.Printf("Bye bye :(\n")
             break forever
         }
+    }
+}
+
+func debugMsg(v ...interface{}) {
+    if log_debug {
+        vars := []interface{}{"[", runtime.NumGoroutine(), "]"}
+        vars = append(vars, v...)
+
+        logger.Println(vars...)
     }
 }
 

@@ -26,6 +26,7 @@ type Resolver struct {
 //                  /foo/bar/.A/1 -> "value-1"
 func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
+    debugMsg("Querying etcd for " + key)
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
         return
