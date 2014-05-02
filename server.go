@@ -29,7 +29,10 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
     // This method will add any answers to the message
     msg := h.resolver.Lookup(req)
     if msg != nil {
-        response.WriteMsg(msg)
+        err := response.WriteMsg(msg)
+        if err != nil {
+            debugMsg("Error writing message: ", err)
+        }
     }
 
     response.Close()
