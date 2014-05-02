@@ -18,7 +18,6 @@ The authoritative domains are configured using the `--domain` argument to the se
 
 - Metrics (can be shipped to statsd/graphite)
 - Support for wildcard domains
-- Support for multiple authoritative domains
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 
 ### Why is this useful?
