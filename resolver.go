@@ -5,6 +5,7 @@ import (
     "github.com/miekg/dns"
     "net"
     "strings"
+    "strconv"
     "fmt"
     "bytes"
     "time"
@@ -49,19 +50,20 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 // domain. It will recurse up the domain structure to find an SOA record that
 // matches.
 func (r *Resolver) Authority(domain string) []dns.RR {
-    // tree := strings.Split(domain, ".")
-    // for i, _ := range tree {
-    //     subdomain := strings.Join(tree[i:], ".")
-    //     answers, _ := r.LookupAnswersForType(subdomain, dns.TypeSOA)
+    tree := strings.Split(domain, ".")
+    for i, _ := range tree {
+        subdomain := strings.Join(tree[i:], ".")
+        answers, _ := r.LookupAnswersForType(subdomain, dns.TypeSOA)
 
-    //     if len(answers) > 0 {
-    //         for _, answer := range answers {
-    //             answer.(*dns.SOA).Serial = uint32(time.Now().Truncate(time.Hour).Unix())
-    //         }
+        if len(answers) > 0 {
+            for _, answer := range answers {
+                // TODO(tarnfeld): Populate this with the current etcd index for this domain
+                answer.(*dns.SOA).Serial = uint32(time.Now().Truncate(time.Hour).Unix())
+            }
 
-    //         return answers
-    //     }
-    // }
+            return answers
+        }
+    }
 
     return make([]dns.RR, 0)
 }
@@ -128,6 +130,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
             }
         case authority, ok := <-authorities:
             if ok {
+                debugMsg("Adding authority", authority)
                 msg.Ns = []dns.RR{authority}
             } else {
                 done++
@@ -148,7 +151,9 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
         // If the domain query was within our authority, we need to send our SOA record
         if r.IsAuthoritative(q.Name) {
-            msg.Ns = r.Authority(q.Name)
+            for _, authority := range r.Authority(q.Name) {
+                msg.Ns = append(msg.Ns, authority)
+            }
         }
     }
 
@@ -481,6 +486,41 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
 
     dns.TypeNS: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
         rr = &dns.NS{header, dns.Fqdn(node.Value)}
+        return
+    },
+
+    dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        parts := strings.SplitN(node.Value, "\\t", 6)
+
+        refresh, err := strconv.ParseUint(parts[2], 10, 32)
+        if err != nil {
+            return nil, err
+        }
+
+        retry, err := strconv.ParseUint(parts[3], 10, 32)
+        if err != nil {
+            return nil, err
+        }
+
+        expire, err := strconv.ParseUint(parts[4], 10, 32)
+        if err != nil {
+            return nil, err
+        }
+
+        minttl, err := strconv.ParseUint(parts[5], 10, 32)
+        if err != nil {
+            return nil, err
+        }
+
+        rr = &dns.SOA{
+            Hdr:     header,
+            Ns:      dns.Fqdn(parts[0]),
+            Mbox:    dns.Fqdn(parts[1]),
+            Refresh: uint32(refresh),
+            Retry:   uint32(retry),
+            Expire:  uint32(expire),
+            Minttl:  uint32(minttl)}
+
         return
     },
 }
