@@ -5,6 +5,7 @@ import (
     "fmt"
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
+    "github.com/rcrowley/go-metrics"
     "net"
     "strconv"
     "strings"
@@ -22,9 +23,15 @@ type Resolver struct {
 //                  /foo/bar/.A/1 -> "value-1"
 func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
+    counter := metrics.GetOrRegisterCounter("resolver.etcd.query_count", metrics.DefaultRegistry)
+    error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
+
+    counter.Inc(1)
     debugMsg("Querying etcd for " + key)
+
     response, err := r.etcd.Get(key, false, false)
     if err != nil {
+        error_counter.Inc(1)
         return
     }
 
@@ -65,9 +72,19 @@ func (r *Resolver) Authority(domain string) ([]dns.RR, *dns.SOA) {
                 return make([]dns.RR, 0), &dns.SOA{}
             }
 
+            // Maintain a counter for when we don't have at least two NS records.
+            if len(nameservers) <= 1 {
+                missing_ns_counter := metrics.GetOrRegisterCounter("resolver.authority.missing_ns", metrics.DefaultRegistry)
+                missing_ns_counter.Inc(1)
+            }
+
             return nameservers, soa
         }
     }
+
+    // Maintain a counter for when we don't have an authority for a domain.
+    missing_counter := metrics.GetOrRegisterCounter("resolver.authority.missing_soa", metrics.DefaultRegistry)
+    missing_counter.Inc(1)
 
     return make([]dns.RR, 0), &dns.SOA{}
 }
@@ -102,6 +119,10 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
         close(errors)
     }()
 
+    miss_counter := metrics.GetOrRegisterCounter("resolver.answers.miss", metrics.DefaultRegistry)
+    hit_counter := metrics.GetOrRegisterCounter("resolver.answers.hit", metrics.DefaultRegistry)
+    error_counter := metrics.GetOrRegisterCounter("resolver.answers.error", metrics.DefaultRegistry)
+
     // Collect up all of the answers and any errors
     done := 0
     for done < 2 {
@@ -114,6 +135,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
             }
         case err, ok := <-errors:
             if ok {
+                error_counter.Inc(1)
                 // TODO(tarnfeld): Send special TXT records with a server error response code
                 debugMsg("Error")
                 debugMsg(err)
@@ -126,11 +148,13 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     // Send the correct authority records
     nameservers, soa := r.Authority(q.Name)
     if len(msg.Answer) == 0 {
+        miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
         if soa != nil{
             msg.Ns = []dns.RR{soa}
         }
     } else {
+        hit_counter.Inc(1)
         msg.Ns = nameservers
     }
 
@@ -143,6 +167,10 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
 func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup) {
+
+    typeStr := strings.ToLower(dns.TypeToString[q.Qtype])
+    type_counter := metrics.GetOrRegisterCounter("resolver.answers.type." + typeStr, metrics.DefaultRegistry)
+    type_counter.Inc(1)
 
     debugMsg("Answering question ", q)
     if q.Qtype == dns.TypeANY {

@@ -3,11 +3,13 @@ package main
 import (
     "github.com/coreos/go-etcd/etcd"
     "github.com/jessevdk/go-flags"
+    "github.com/rcrowley/go-metrics"
     "log"
     "os"
     "os/signal"
     "runtime"
     "time"
+    "net"
 )
 
 var (
@@ -16,10 +18,13 @@ var (
 
     // Define all of the command line arguments
     Options struct {
-        ListenAddress   string      `short:"l" long:"listen" description:"Listen IP address" default:"0.0.0.0"`
-        ListenPort      int         `short:"p" long:"port" description:"Port to listen on" default:"53"`
-        EtcdHosts       []string    `short:"e" long:"etcd" description:"host:port for etcd hosts" default:"127.0.0.1:4001"`
-        Debug           bool        `short:"v" long:"debug" description:"Enable debug logging"`
+        ListenAddress       string      `short:"l" long:"listen" description:"Listen IP address" default:"0.0.0.0"`
+        ListenPort          int         `short:"p" long:"port" description:"Port to listen on" default:"53"`
+        EtcdHosts           []string    `short:"e" long:"etcd" description:"host:port for etcd hosts" default:"127.0.0.1:4001"`
+        Debug               bool        `short:"v" long:"debug" description:"Enable debug logging"`
+        MetricsDuration     int         `short:"m" long:"metrics" description:"Dump metrics to stderr every N seconds" default:"30"`
+        GraphiteServer      string      `long:"graphite" description:"Graphite server to send metrics to"`
+        GraphiteDuration    int         `long:"graphite-duration" description:"Duration to periodically send metrics to the graphite server" default:"10"`
     }
 )
 
@@ -40,6 +45,26 @@ func main() {
     if !etcd.SyncCluster() {
         logger.Printf("[WARNING] Failed to connect to etcd cluster at launch time")
     }
+
+    // Register the metrics writer
+    if len(Options.GraphiteServer) > 0 {
+        addr, err := net.ResolveTCPAddr("tcp", Options.GraphiteServer)
+        if err != nil {
+            logger.Fatalf("Failed to parse graphite server: ", err)
+        }
+
+        go metrics.Graphite(metrics.DefaultRegistry, time.Duration(Options.GraphiteDuration) * time.Second, "discodns", addr)
+    } else if Options.MetricsDuration > 0 {
+        go metrics.Log(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration) * time.Second, logger)
+    } else {
+        logger.Printf("Metric logging disabled")
+    }
+
+    // Register a bunch of debug metrics
+    metrics.RegisterDebugGCStats(metrics.DefaultRegistry)
+    metrics.RegisterRuntimeMemStats(metrics.DefaultRegistry)
+    go metrics.CaptureDebugGCStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
+    go metrics.CaptureRuntimeMemStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
 
     // Start up the DNS resolver server
     server := &Server{
