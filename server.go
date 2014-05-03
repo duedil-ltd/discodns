@@ -11,14 +11,11 @@ type Server struct {
     addr        string
     port        int
     etcd        *etcd.Client
-    ns          []string
-    domains     []string
     rTimeout    time.Duration
     wTimeout    time.Duration
 }
 
 type Handler struct {
-    net         string
     resolver    *Resolver
 }
 
@@ -45,22 +42,9 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-    resolver := func (s *Server, net string) *Resolver {
-        return &Resolver{
-            etcd: s.etcd,
-            dns: &dns.Client{
-                Net: net,
-                DialTimeout: s.rTimeout,
-                ReadTimeout: s.rTimeout,
-                WriteTimeout: s.wTimeout},
-            domains: s.domains,
-            nameservers: s.ns,
-            rTimeout: s.rTimeout,
-        }
-    }
-
-    tcpDNShandler := &Handler{resolver: resolver(s, "tcp")}
-    udpDNShandler := &Handler{resolver: resolver(s, "udp")}
+    resolver := Resolver{s.etcd}
+    tcpDNShandler := &Handler{&resolver}
+    udpDNShandler := &Handler{&resolver}
 
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()

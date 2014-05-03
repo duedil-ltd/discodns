@@ -3,10 +3,10 @@ package main
 import (
     "github.com/coreos/go-etcd/etcd"
     "github.com/jessevdk/go-flags"
-    "runtime"
-    "os/signal"
-    "os"
     "log"
+    "os"
+    "os/signal"
+    "runtime"
     "time"
 )
 
@@ -19,9 +19,6 @@ var (
         ListenAddress   string      `short:"l" long:"listen" description:"Listen IP address" default:"0.0.0.0"`
         ListenPort      int         `short:"p" long:"port" description:"Port to listen on" default:"53"`
         EtcdHosts       []string    `short:"e" long:"etcd" description:"host:port for etcd hosts" default:"127.0.0.1:4001"`
-        Nameservers     []string    `short:"n" long:"ns" description:"Upstream nameservers for forwarding"`
-        Timeout         string      `short:"t" long:"ns-timeout" description:"Default forwarding timeout" default:"1s"`
-        Domain          []string    `short:"d" long:"domain" description:"Domain for this server to be authoritative over"`
         Debug           bool        `short:"v" long:"debug" description:"Enable debug logging"`
     }
 )
@@ -38,16 +35,6 @@ func main() {
         debugMsg("Debug mode enabled")
     }
 
-    // Parse the timeout string
-    nsTimeout, err := time.ParseDuration(Options.Timeout)
-    if err != nil {
-        logger.Fatalf("Failed to parse duration '%s'", Options.Timeout)
-    }
-
-    if len(Options.Nameservers) == 0 {
-        logger.Fatalf("Upstream nameservers are required with -n")
-    }
-
     // Create an ETCD client
     etcd := etcd.NewClient(Options.EtcdHosts)
     if !etcd.SyncCluster() {
@@ -59,10 +46,8 @@ func main() {
         addr: Options.ListenAddress,
         port: Options.ListenPort,
         etcd: etcd,
-        rTimeout: nsTimeout,
-        wTimeout: nsTimeout,
-        domains: Options.Domain,
-        ns: Options.Nameservers}
+        rTimeout: time.Duration(5) * time.Second,
+        wTimeout: time.Duration(5) * time.Second}
 
     server.Run()
 

@@ -20,3 +20,14 @@ func (e *NodeConversionError) Error() string {
         e.Message,
         &e.Node)
 }
+
+type RecordValueError struct {
+    Message string
+    AttemptedType uint16
+}
+func (e *RecordValueError) Error() string {
+    return fmt.Sprintf(
+        "Invalid record value for type %d: %s",
+        e.AttemptedType,
+        e.Message)
+}
