@@ -10,10 +10,10 @@ An authoritative DNS *nameserver* that queries an [etcd](http://github.com/coreo
 - Full support for both `NS` and `SOA` records for delegation either between discodns servers, or others.
 - Full support for both IPv4 and IPv6 addresses
 - Multiple resource records of different types per domain
+- Runtime and application metrics are captured regularly for monitoring
 
 #### Coming Soon
 
-- Metrics (can be shipped to statsd/graphite)
 - Support for wildcard domains
 - Support for SRV records
 - Support for configurable TTLs
@@ -130,6 +130,12 @@ You'll notice the `.A` folder here on the end of the reverse domain, this signif
 discodns.net.     0   IN  A   10.1.1.1
 discodns.net.     0   IN  A   10.1.1.2
 ````
+
+### Metrics
+
+The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
+
+You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
 
 ## Notes
 
