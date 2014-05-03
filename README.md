@@ -2,9 +2,7 @@
 discodns
 ======
 
-A DNS *fowarder* and *nameserver* that first queries an [etcd](http://github.com/coreos/etcd) database of domains and records. It forwards requests it's not authoritative for onto a configured set of upstream nameservers (Google DNS by default).
-
-The authoritative domains are configured using the `--domain` argument to the server, which switches the server from a *forwarder* to a *nameserver* for that domain zone. For example, `--domain=discodns.net.` will mean any domain queries within the `discodns.net.` zone will be served from the local database.
+An authoritative DNS *nameserver* that queries an [etcd](http://github.com/coreos/etcd) database of domains and records.
 
 #### Key Features
 
@@ -12,17 +10,18 @@ The authoritative domains are configured using the `--domain` argument to the se
 - Full support for both `NS` and `SOA` records for delegation either between discodns servers, or others.
 - Full support for both IPv4 and IPv6 addresses
 - Multiple resource records of different types per domain
-- Support for recursive and non-recursive DNS queries
 
 #### Coming Soon
 
 - Metrics (can be shipped to statsd/graphite)
 - Support for wildcard domains
+- Support for SRV records
+- Support for configurable TTLs
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 
 ### Why is this useful?
 
-We built discodns to be the backbone of our internal infrastructure, providing us with a robust and distributed Domain Name System to use. It allows us to register domains in any format, without imposing restrictions on how hosts/services must be named.
+We built discodns to be the backbone of our internal DNS infrastructure, providing us with a robust and distributed nameserver system to use. It allows us to register domains in any format, without imposing restrictions on how hosts or services are named.
 
 ### Why etcd?
 
@@ -43,11 +42,11 @@ make
 
 It's as simple as launching the binary to start a DNS server listening on port 53 (tcp+udp) and accepting requests.
 
-**Note:** You need to have an etcd cluster already running, use the `-h` argument for details on other configuration options.
+**Note:** You can enable verbose logging using the `-v` argument
 
 ````shell
 cd discodns/build/
-sudo ./bin/discodns --domain=discodns.net --ns=8.8.8.8 --ns=8.8.4.4
+sudo ./bin/discodns
 ````
 
 ### Try it out
@@ -72,10 +71,12 @@ discodns.net.     0   IN  A   10.1.1.1
 
 ### Authority
 
-If you're not familiar with the DNS specification, to support correct DNS Delegation using `NS` records, each top level domain needs to have it's own `SOA` record (stands for Start Of Authority) to asset it's authority. Since discodns can support multiple authoritative domains, it's up to you to enter this `SOA` record for each domain you use. Here's an example of creating this record for `discodns.net.`.
+If you're not familiar with the DNS specification, to behave correctly as an authoritative nameserver each domain needs to have it's own `SOA` record (stands for Start Of Authority) to assert it's authority, as well as a set of `NS` records (most likely a set of other discodns servers). Since discodns can support multiple authoritative domains, it's up to you to enter this `SOA` record for each domain you use. Here's an example of creating this record for `discodns.net.`.
+
+#### SOA
 
 ```shell
-curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.SOA -XPUT -d value="ns1.discodns.net\tadmin.discodns.net\t3600\t600\t86400\t10"
+curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.SOA -XPUT -d value="ns1.discodns.net.\tadmin.discodns.net.\t3600\t600\t86400\t10"
 {"action":"set","node":{"key":"/net/discodns/.SOA","value":"...","modifiedIndex":11,"createdIndex":11}}
 ```
 
@@ -91,6 +92,22 @@ admin.discodns.net \t   << - This is the "admin" email address, note the first s
 ```
 
 **Note:** If you're familiar with SOA records, you'll probably notice a value missing from above. The "Serial Number" (should be in the 3rd position) is actually filled in automatically by discodns, because it uses the current index of the etcd cluster to describe the current version of the zone.
+
+#### NS
+
+Let's add the two NS records we need for our DNS cluster.
+
+```
+curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.NS/ns1 -XPUT -d value=ns1.discodns.net.
+{"action":"set","node":{"key":"/net/discodns/.NS/ns1","value":"...","modifiedIndex":12,"createdIndex":12}}
+```
+
+```
+curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.NS/ns2 -XPUT -d value=ns2.discodns.net.
+{"action":"set","node":{"key":"/net/discodns/.NS/ns2","value":"...","modifiedIndex":13,"createdIndex":13}}
+```
+
+**Don't forget to ensure you also add `A` records for the `ns{1,2}.discodns.net` domains to ensure they can resolve to IPs.**
 
 ### Storage
 
