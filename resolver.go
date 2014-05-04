@@ -150,7 +150,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     if len(msg.Answer) == 0 {
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
-        if soa != nil{
+        if len(soa.Ns) > 0 {
             msg.Ns = []dns.RR{soa}
         }
     } else {
