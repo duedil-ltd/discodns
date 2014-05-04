@@ -152,6 +152,8 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
         msg.SetRcode(req, dns.RcodeNameError)
         if len(soa.Ns) > 0 {
             msg.Ns = []dns.RR{soa}
+        } else {
+            msg.Authoritative = false // No SOA? We're not authoritative
         }
     } else {
         hit_counter.Inc(1)
