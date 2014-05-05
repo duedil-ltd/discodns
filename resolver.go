@@ -52,7 +52,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 // Authority returns a dns.RR describing the know authority for the given
 // domain. It will recurse up the domain structure to find an SOA record that
 // matches.
-func (r *Resolver) Authority(domain string) ([]dns.RR, *dns.SOA) {
+func (r *Resolver) Authority(domain string) (soa *dns.SOA) {
     tree := strings.Split(domain, ".")
     for i, _ := range tree {
         subdomain := strings.Join(tree[i:], ".")
@@ -60,25 +60,12 @@ func (r *Resolver) Authority(domain string) ([]dns.RR, *dns.SOA) {
         // Check for an SOA entry
         answers, err := r.LookupAnswersForType(subdomain, dns.TypeSOA)
         if err != nil {
-            return make([]dns.RR, 0), &dns.SOA{}
+            return
         }
 
         if len(answers) == 1 {
-            soa := answers[0].(*dns.SOA)
+            soa = answers[0].(*dns.SOA)
             soa.Serial = uint32(time.Now().Truncate(time.Hour).Unix())
-
-            nameservers, err := r.LookupAnswersForType(subdomain, dns.TypeNS)
-            if err != nil {
-                return make([]dns.RR, 0), &dns.SOA{}
-            }
-
-            // Maintain a counter for when we don't have at least two NS records.
-            if len(nameservers) <= 1 {
-                missing_ns_counter := metrics.GetOrRegisterCounter("resolver.authority.missing_ns", metrics.DefaultRegistry)
-                missing_ns_counter.Inc(1)
-            }
-
-            return nameservers, soa
         }
     }
 
@@ -86,7 +73,7 @@ func (r *Resolver) Authority(domain string) ([]dns.RR, *dns.SOA) {
     missing_counter := metrics.GetOrRegisterCounter("resolver.authority.missing_soa", metrics.DefaultRegistry)
     missing_counter.Inc(1)
 
-    return make([]dns.RR, 0), &dns.SOA{}
+    return
 }
 
 // Lookup responds to DNS messages of type Query, with a dns message containing Answers.
@@ -146,18 +133,17 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     }
 
     // Send the correct authority records
-    nameservers, soa := r.Authority(q.Name)
+    soa := r.Authority(q.Name)
     if len(msg.Answer) == 0 {
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
-        if len(soa.Ns) > 0 {
+        if soa != nil {
             msg.Ns = []dns.RR{soa}
         } else {
             msg.Authoritative = false // No SOA? We're not authoritative
         }
     } else {
         hit_counter.Inc(1)
-        msg.Ns = nameservers
     }
 
     return
