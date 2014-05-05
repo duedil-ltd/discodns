@@ -56,15 +56,15 @@ func main() {
         go metrics.Graphite(metrics.DefaultRegistry, time.Duration(Options.GraphiteDuration) * time.Second, "discodns", addr)
     } else if Options.MetricsDuration > 0 {
         go metrics.Log(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration) * time.Second, logger)
+
+        // Register a bunch of debug metrics
+        metrics.RegisterDebugGCStats(metrics.DefaultRegistry)
+        metrics.RegisterRuntimeMemStats(metrics.DefaultRegistry)
+        go metrics.CaptureDebugGCStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
+        go metrics.CaptureRuntimeMemStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
     } else {
         logger.Printf("Metric logging disabled")
     }
-
-    // Register a bunch of debug metrics
-    metrics.RegisterDebugGCStats(metrics.DefaultRegistry)
-    metrics.RegisterRuntimeMemStats(metrics.DefaultRegistry)
-    go metrics.CaptureDebugGCStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
-    go metrics.CaptureRuntimeMemStats(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration))
 
     // Start up the DNS resolver server
     server := &Server{
