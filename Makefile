@@ -17,6 +17,11 @@ compile:
 	go build -o build/bin/discodns *.go
 	@echo "\033[32m✔\033[39m Successfully built into ./build"
 
+test:
+	@echo "\033[34m●\033[39m Running tests"
+	go test
+	@echo "\033[32m✔\033[39m Tests passed"
+
 install:
 	@echo "\033[34m●\033[39m Installing into /usr/local/bin"
 	cp build/bin/discodns /usr/local/bin/
