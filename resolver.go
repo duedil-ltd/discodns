@@ -30,21 +30,38 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     counter.Inc(1)
     debugMsg("Querying etcd for " + key)
 
-    response, err := r.etcd.Get(r.etcdPrefix + key, false, false)
+    response, err := r.etcd.Get(r.etcdPrefix + key, false, true)
     if err != nil {
         error_counter.Inc(1)
         return
     }
 
-    if response.Node.Dir == true {
-        // TODO(orls): Does this need to convert to a slice?
-        nodes = make([]*etcd.Node, len(response.Node.Nodes))
-        for i := 0; i < len(response.Node.Nodes); i++ {
-            nodes[i] = response.Node.Nodes[i]
+    var findKeys func(node *etcd.Node)
+
+    c := make(chan *etcd.Node)
+    wg := sync.WaitGroup{}
+    findKeys = func(node *etcd.Node) {
+        if node.Dir == true {
+            for _, subnode := range node.Nodes {
+                wg.Add(1)
+                go findKeys(subnode)
+            }
+        } else {
+            c <- node
         }
-    } else {
-        nodes = make([]*etcd.Node, 1)
-        nodes[0] = response.Node
+        wg.Done()
+    }
+
+    wg.Add(1)
+    go findKeys(response.Node)
+    go func() {
+        wg.Wait()
+        close(c)
+    }()
+
+    nodes = make([]*etcd.Node, 0)
+    for node := range c {
+        nodes = append(nodes, node)
     }
 
     return

@@ -40,7 +40,39 @@ func TestGetFromStorageSingleKey(t *testing.T) {
 }
 
 func TestGetFromStorageNestedKeys(t *testing.T) {
+    resolver.etcdPrefix = "bar/"
+    client.Set("bar/net/disco/.A/0", "1.1.1.1", 0)
+    client.Set("bar/net/disco/.A/1", "1.1.1.2", 0)
+    client.Set("bar/net/disco/.A/2/0", "1.1.1.3", 0)
 
+    nodes, err := resolver.GetFromStorage("net/disco/.A")
+    if err != nil {
+        t.Error("Error returned from etcd", err)
+        t.Fatal()
+    }
+
+    if len(nodes) != 3 {
+        t.Error("Number of nodes should be 3: ", len(nodes))
+        t.Fatal()
+    }
+
+    var node *etcd.Node
+
+    node = nodes[0]
+    if node.Value != "1.1.1.1" {
+        t.Error("Node value should be 1.1.1.1: ", node)
+        t.Fail()
+    }
+    node = nodes[1]
+    if node.Value != "1.1.1.2" {
+        t.Error("Node value should be 1.1.1.2: ", node)
+        t.Fail()
+    }
+    node = nodes[2]
+    if node.Value != "1.1.1.3" {
+        t.Error("Node value should be 1.1.1.3: ", node)
+        t.Fail()
+    }
 }
 
 func TestAuthorityRoot(t *testing.T) {
@@ -52,11 +84,11 @@ func TestAuthorityDomain(t *testing.T) {
 }
 
 func TestLookup(t *testing.T) {
-    
+
 }
 
 func TestAnswerQuestionANY(t *testing.T) {
-    
+
 }
 
 func TestAnswerQuestionA(t *testing.T) {
@@ -91,17 +123,17 @@ func TestConvertersA(t *testing.T) {
 }
 
 func TestConvertersAAAA(t *testing.T) {
-    
+
 }
 
 func TestConvertersCNAME(t *testing.T) {
-    
+
 }
 
 func TestConvertersNS(t *testing.T) {
-    
+
 }
 
 func TestConvertersSOA(t *testing.T) {
-    
+
 }
