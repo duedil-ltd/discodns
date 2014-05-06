@@ -15,6 +15,7 @@ import (
 
 type Resolver struct {
     etcd        *etcd.Client
+    etcdPrefix  string
 }
 
 // GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
@@ -29,7 +30,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     counter.Inc(1)
     debugMsg("Querying etcd for " + key)
 
-    response, err := r.etcd.Get(key, false, false)
+    response, err := r.etcd.Get(r.etcdPrefix + key, false, false)
     if err != nil {
         error_counter.Inc(1)
         return
@@ -245,6 +246,8 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     return
 }
 
+// nameToKey returns a string representing the etcd version of a domain, replacing dots with slashes
+// and reversing it (foo.net. -> /net/foo)
 func nameToKey(name string, suffix string) string {
     segments := strings.Split(name, ".")
 
