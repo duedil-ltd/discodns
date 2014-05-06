@@ -38,31 +38,18 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
     var findKeys func(node *etcd.Node)
 
-    c := make(chan *etcd.Node)
-    wg := sync.WaitGroup{}
+    nodes = make([]*etcd.Node, 0)
     findKeys = func(node *etcd.Node) {
         if node.Dir == true {
             for _, subnode := range node.Nodes {
-                wg.Add(1)
-                go findKeys(subnode)
+                findKeys(subnode)
             }
         } else {
-            c <- node
+            nodes = append(nodes, node)
         }
-        wg.Done()
     }
 
-    wg.Add(1)
-    go findKeys(response.Node)
-    go func() {
-        wg.Wait()
-        close(c)
-    }()
-
-    nodes = make([]*etcd.Node, 0)
-    for node := range c {
-        nodes = append(nodes, node)
-    }
+    findKeys(response.Node)
 
     return
 }
