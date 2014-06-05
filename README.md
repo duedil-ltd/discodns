@@ -11,10 +11,10 @@ An authoritative DNS *nameserver* that queries an [etcd](http://github.com/coreo
 - Full support for both IPv4 and IPv6 addresses
 - Multiple resource records of different types per domain
 - Runtime and application metrics are captured regularly for monitoring
+- Support for wildcard domains
 
 #### Coming Soon
 
-- Support for wildcard domains
 - Support for SRV records
 - Support for configurable TTLs
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
