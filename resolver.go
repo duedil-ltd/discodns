@@ -106,6 +106,28 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     go func() {
         wait.Wait()
 
+        // If we failed to find any answers, let's keep looking up the tree for
+        // any wildcard domain entries.
+        if len(answers) == 0 {
+            parts := strings.Split(q.Name, ".")
+            for level := 1; level < len(parts); level++ {
+                domain := strings.Join(parts[level:], ".")
+                if len(domain) > 1 {
+                    question := dns.Question{
+                        Name: "*." + dns.Fqdn(domain),
+                        Qtype: q.Qtype,
+                        Qclass: q.Qclass}
+
+                    r.AnswerQuestion(answers, errors, question, &wait)
+
+                    wait.Wait()
+                    if len(answers) > 0 {
+                        break;
+                    }
+                }
+            }
+        }
+
         debugMsg("Finished processing all goroutines, closing channels")
         close(answers)
         close(errors)
@@ -121,6 +143,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
         select {
         case rr, ok := <-answers:
             if ok {
+                rr.Header().Name = q.Name
                 msg.Answer = append(msg.Answer, rr)
             } else {
                 done++
@@ -166,6 +189,7 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
     type_counter.Inc(1)
 
     debugMsg("Answering question ", q)
+
     if q.Qtype == dns.TypeANY {
         wg.Add(len(converters))
 
