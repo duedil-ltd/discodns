@@ -39,7 +39,7 @@ func TestGetFromStorageSingleKey(t *testing.T) {
     node := nodes[0]
     if node.Value != "1.1.1.1" {
         t.Error("Node value should be 1.1.1.1: ", node)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -65,17 +65,17 @@ func TestGetFromStorageNestedKeys(t *testing.T) {
     node = nodes[0]
     if node.Value != "1.1.1.1" {
         t.Error("Node value should be 1.1.1.1: ", node)
-        t.Fail()
+        t.Fatal()
     }
     node = nodes[1]
     if node.Value != "1.1.1.2" {
         t.Error("Node value should be 1.1.1.2: ", node)
-        t.Fail()
+        t.Fatal()
     }
     node = nodes[2]
     if node.Value != "1.1.1.3" {
         t.Error("Node value should be 1.1.1.3: ", node)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -114,12 +114,12 @@ func TestAuthorityRoot(t *testing.T) {
 
     if len(answer.Answer) > 0 {
         t.Error("Expected zero answers")
-        t.Fail()
+        t.Fatal()
     }
 
     if len(answer.Ns) != 1 {
         t.Error("Expected one authority record")
-        t.Fail()
+        t.Fatal()
     }
 
     rr := answer.Ns[0].(*dns.SOA)
@@ -128,40 +128,40 @@ func TestAuthorityRoot(t *testing.T) {
     // Verify the header is correct
     if header.Name != "disco.net." {
         t.Error("Expected record with name disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeSOA {
         t.Error("Expected record with type SOA:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
 
     // Verify the record itself is correct
     if rr.Ns != "ns1.disco.net." {
         t.Error("Expected NS to be ns1.disco.net.: ", rr.Ns)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Mbox != "admin.disco.net." {
         t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
-        t.Fail()
+        t.Fatal()
     }
     // if rr.Serial != "admin.disco.net" {
     //     t.Error("Expected MBOX to be admin.disco.net: ", rr.Mbox)
     // }
     if rr.Refresh != 3600 {
         t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Retry != 600 {
         t.Error("Expected RETRY to be 600: ", rr.Retry)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Expire != 86400 {
         t.Error("Expected EXPIRE to be 86400: ", rr.Expire)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Minttl != 10 {
         t.Error("Expected MINTTL to be 10: ", rr.Minttl)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -176,12 +176,12 @@ func TestAuthorityDomain(t *testing.T) {
 
     if len(answer.Answer) > 0 {
         t.Error("Expected zero answers")
-        t.Fail()
+        t.Fatal()
     }
 
     if len(answer.Ns) != 1 {
         t.Error("Expected one authority record")
-        t.Fail()
+        t.Fatal()
     }
 
     rr := answer.Ns[0].(*dns.SOA)
@@ -190,37 +190,37 @@ func TestAuthorityDomain(t *testing.T) {
     // Verify the header is correct
     if header.Name != "disco.net." {
         t.Error("Expected record with name disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeSOA {
         t.Error("Expected record with type SOA:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
 
     // Verify the record itself is correct
     if rr.Ns != "ns1.disco.net." {
         t.Error("Expected NS to be ns1.disco.net.: ", rr.Ns)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Mbox != "admin.disco.net." {
         t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Refresh != 3600 {
         t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Retry != 600 {
         t.Error("Expected RETRY to be 600: ", rr.Retry)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Expire != 86400 {
         t.Error("Expected EXPIRE to be 86400: ", rr.Expire)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Minttl != 10 {
         t.Error("Expected MINTTL to be 10: ", rr.Minttl)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -240,12 +240,12 @@ func TestAnswerQuestionA(t *testing.T) {
 
     if len(answer.Answer) != 1 {
         t.Error("Expected one answer, got ", len(answer.Answer))
-        t.Fail()
+        t.Fatal()
     }
 
     if len(answer.Ns) > 0 {
         t.Error("Didn't expect any authority records")
-        t.Fail()
+        t.Fatal()
     }
 
     rr := answer.Answer[0].(*dns.A)
@@ -254,17 +254,17 @@ func TestAnswerQuestionA(t *testing.T) {
     // Verify the header is correct
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeA {
         t.Error("Expected record with type A:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
 
     // Verify the record itself is correct
     if rr.A.String() != "1.2.3.4" {
         t.Error("Expected A record to be 1.2.3.4: ", rr.A)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -280,12 +280,12 @@ func TestAnswerQuestionAAAA(t *testing.T) {
 
     if len(answer.Answer) != 1 {
         t.Error("Expected one answer, got ", len(answer.Answer))
-        t.Fail()
+        t.Fatal()
     }
 
     if len(answer.Ns) > 0 {
         t.Error("Didn't expect any authority records")
-        t.Fail()
+        t.Fatal()
     }
 
     rr := answer.Answer[0].(*dns.AAAA)
@@ -294,17 +294,17 @@ func TestAnswerQuestionAAAA(t *testing.T) {
     // Verify the header is correct
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeAAAA {
         t.Error("Expected record with type AAAA:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
 
     // Verify the record itself is correct
     if rr.AAAA.String() != "::1" {
-        t.Error("Expected AAAA record to be 1.2.3.4: ", rr.AAAA)
-        t.Fail()
+        t.Error("Expected AAAA record to be ::1: ", rr.AAAA)
+        t.Fatal()
     }
 }
 
@@ -321,12 +321,66 @@ func TestAnswerQuestionANY(t *testing.T) {
 
     if len(answer.Answer) != 3 {
         t.Error("Expected one answer, got ", len(answer.Answer))
-        t.Fail()
+        t.Fatal()
     }
 
     if len(answer.Ns) > 0 {
         t.Error("Didn't expect any authority records")
-        t.Fail()
+        t.Fatal()
+    }
+}
+
+func TestAnswerQuestionWildcardAAAANoMatch(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionWildcardANoMatch/"
+    client.Set("TestAnswerQuestionWildcardANoMatch/net/disco/bar/*/.AAAA", "::1", 0)
+
+    query := new(dns.Msg)
+    query.SetQuestion("bar.disco.net.", dns.TypeAAAA)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) > 0 {
+        t.Error("Didn't expect any answers, got ", len(answer.Answer))
+        t.Fatal()
+    }
+}
+
+func TestAnswerQuestionWildcardAAAA(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionWildcardA/"
+    client.Set("TestAnswerQuestionWildcardA/net/disco/bar/*/.AAAA", "::1", 0)
+
+    query := new(dns.Msg)
+    query.SetQuestion("baz.bar.disco.net.", dns.TypeAAAA)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) != 1 {
+        t.Error("Expected one answer, got ", len(answer.Answer))
+        t.Fatal()
+    }
+
+    if len(answer.Ns) > 0 {
+        t.Error("Didn't expect any authority records")
+        t.Fatal()
+    }
+
+    rr := answer.Answer[0].(*dns.AAAA)
+    header := rr.Header()
+
+    // Verify the header is correct
+    if header.Name != "baz.bar.disco.net." {
+        t.Error("Expected record with name baz.bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeAAAA {
+        t.Error("Expected record with type AAAA:", header.Rrtype)
+        t.Fatal()
+    }
+
+    // Verify the record itself is correct
+    if rr.AAAA.String() != "::1" {
+        t.Error("Expected AAAA record to be ::1: ", rr.AAAA)
+        t.Fatal()
     }
 }
 
@@ -343,7 +397,7 @@ func TestLookupAnswerForA(t *testing.T) {
 
     if len(records) != 1 {
         t.Error("Expected one answer, got ", len(records))
-        t.Fail()
+        t.Fatal()
     }
 
     rr := records[0].(*dns.A)
@@ -351,15 +405,15 @@ func TestLookupAnswerForA(t *testing.T) {
 
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeA {
         t.Error("Expected record with type A:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
     if rr.A.String() != "1.2.3.4" {
         t.Error("Expected A record to be 1.2.3.4: ", rr.A)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -371,7 +425,7 @@ func TestLookupAnswerForAAAA(t *testing.T) {
 
     if len(records) != 1 {
         t.Error("Expected one answer, got ", len(records))
-        t.Fail()
+        t.Fatal()
     }
 
     rr := records[0].(*dns.AAAA)
@@ -379,15 +433,15 @@ func TestLookupAnswerForAAAA(t *testing.T) {
 
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeAAAA {
         t.Error("Expected record with type AAAA:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
     if rr.AAAA.String() != "::1" {
         t.Error("Expected AAAA record to be ::1: ", rr.AAAA)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -399,7 +453,7 @@ func TestLookupAnswerForCNAME(t *testing.T) {
 
     if len(records) != 1 {
         t.Error("Expected one answer, got ", len(records))
-        t.Fail()
+        t.Fatal()
     }
 
     rr := records[0].(*dns.CNAME)
@@ -407,15 +461,15 @@ func TestLookupAnswerForCNAME(t *testing.T) {
 
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeCNAME {
         t.Error("Expected record with type CNAME:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Target != "cname.google.com." {
         t.Error("Expected CNAME record to be cname.google.com.: ", rr.Target)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -427,7 +481,7 @@ func TestLookupAnswerForNS(t *testing.T) {
 
     if len(records) != 1 {
         t.Error("Expected one answer, got ", len(records))
-        t.Fail()
+        t.Fatal()
     }
 
     rr := records[0].(*dns.NS)
@@ -435,15 +489,15 @@ func TestLookupAnswerForNS(t *testing.T) {
 
     if header.Name != "bar.disco.net." {
         t.Error("Expected record with name bar.disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeNS {
         t.Error("Expected record with type NS:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Ns != "dns.google.com." {
         t.Error("Expected NS record to be dns.google.com.: ", rr.Ns)
-        t.Fail()
+        t.Fatal()
     }
 }
 
@@ -455,7 +509,7 @@ func TestLookupAnswerForSOA(t *testing.T) {
 
     if len(records) != 1 {
         t.Error("Expected one answer, got ", len(records))
-        t.Fail()
+        t.Fatal()
     }
 
     rr := records[0].(*dns.SOA)
@@ -463,36 +517,36 @@ func TestLookupAnswerForSOA(t *testing.T) {
 
     if header.Name != "disco.net." {
         t.Error("Expected record with name disco.net.: ", header.Name)
-        t.Fail()
+        t.Fatal()
     }
     if header.Rrtype != dns.TypeSOA {
         t.Error("Expected record with type SOA:", header.Rrtype)
-        t.Fail()
+        t.Fatal()
     }
 
     // Verify the record itself is correct
     if rr.Ns != "ns1.disco.net." {
         t.Error("Expected NS to be ns1.disco.net.: ", rr.Ns)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Mbox != "admin.disco.net." {
         t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Refresh != 3600 {
         t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Retry != 600 {
         t.Error("Expected RETRY to be 600: ", rr.Retry)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Expire != 86400 {
         t.Error("Expected EXPIRE to be 86400: ", rr.Expire)
-        t.Fail()
+        t.Fatal()
     }
     if rr.Minttl != 10 {
         t.Error("Expected MINTTL to be 10: ", rr.Minttl)
-        t.Fail()
+        t.Fatal()
     }
 }
