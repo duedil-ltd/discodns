@@ -241,6 +241,7 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
         answer, err := converters[rrType](node, header)
 
         if err != nil {
+            debugMsg("Error converting type: ", err)
             return nil, err
         }
 
@@ -299,14 +300,12 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
             err = &NodeConversionError{
                 Node: node,
                 Message: fmt.Sprintf("Failed to parse IP Address %s", node.Value),
-                AttemptedType: dns.TypeAAAA,
-            }
+                AttemptedType: dns.TypeAAAA}
         } else if ip.To16() == nil {
             err = &NodeConversionError{
                 Node: node,
                 Message: fmt.Sprintf("Value %s isn't an IPv6 address", node.Value),
-                AttemptedType: dns.TypeA,
-            }
+                AttemptedType: dns.TypeA}
         } else {
             rr = &dns.AAAA{header, ip}
         }
@@ -331,34 +330,41 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
     dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
         parts := strings.SplitN(node.Value, "\\t", 6)
 
-        refresh, err := strconv.ParseUint(parts[2], 10, 32)
-        if err != nil {
-            return nil, err
-        }
+        if len(parts) < 6 {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Value %s isn't valid for SOA", node.Value),
+                AttemptedType: dns.TypeSOA}
+        } else {
+            refresh, err := strconv.ParseUint(parts[2], 10, 32)
+            if err != nil {
+                return nil, err
+            }
 
-        retry, err := strconv.ParseUint(parts[3], 10, 32)
-        if err != nil {
-            return nil, err
-        }
+            retry, err := strconv.ParseUint(parts[3], 10, 32)
+            if err != nil {
+                return nil, err
+            }
 
-        expire, err := strconv.ParseUint(parts[4], 10, 32)
-        if err != nil {
-            return nil, err
-        }
+            expire, err := strconv.ParseUint(parts[4], 10, 32)
+            if err != nil {
+                return nil, err
+            }
 
-        minttl, err := strconv.ParseUint(parts[5], 10, 32)
-        if err != nil {
-            return nil, err
-        }
+            minttl, err := strconv.ParseUint(parts[5], 10, 32)
+            if err != nil {
+                return nil, err
+            }
 
-        rr = &dns.SOA{
-            Hdr:     header,
-            Ns:      dns.Fqdn(parts[0]),
-            Mbox:    dns.Fqdn(parts[1]),
-            Refresh: uint32(refresh),
-            Retry:   uint32(retry),
-            Expire:  uint32(expire),
-            Minttl:  uint32(minttl)}
+            rr = &dns.SOA{
+                Hdr:     header,
+                Ns:      dns.Fqdn(parts[0]),
+                Mbox:    dns.Fqdn(parts[1]),
+                Refresh: uint32(refresh),
+                Retry:   uint32(retry),
+                Expire:  uint32(expire),
+                Minttl:  uint32(minttl)}
+        }
 
         return
     },
