@@ -79,6 +79,30 @@ func TestGetFromStorageNestedKeys(t *testing.T) {
     }
 }
 
+func TestNameToKeyConverter(t *testing.T) {
+    var key string
+
+    key = nameToKey("foo.net.", "")
+    if key != "/net/foo" {
+        t.Error("Expected key /net/foo")
+    }
+
+    key = nameToKey("foo.net", "")
+    if key != "/net/foo" {
+        t.Error("Expected key /net/foo")
+    }
+
+    key = nameToKey("foo.net.", "/.A")
+    if key != "/net/foo/.A" {
+        t.Error("Expected key /net/foo/.A")
+    }
+}
+
+/**
+ * Test that the right authority is being returned for different types of DNS
+ * queries.
+ */
+
 func TestAuthorityRoot(t *testing.T) {
     resolver.etcdPrefix = "TestAuthorityRoot/"
     client.Set("TestAuthorityRoot/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
@@ -182,9 +206,6 @@ func TestAuthorityDomain(t *testing.T) {
         t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
         t.Fail()
     }
-    // if rr.Serial != "admin.disco.net" {
-    //     t.Error("Expected MBOX to be admin.disco.net: ", rr.Mbox)
-    // }
     if rr.Refresh != 3600 {
         t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
         t.Fail()
@@ -202,6 +223,10 @@ func TestAuthorityDomain(t *testing.T) {
         t.Fail()
     }
 }
+
+/**
+ * Test different that types of DNS queries return the correct answers
+ **/
 
 func TestAnswerQuestionA(t *testing.T) {
     resolver.etcdPrefix = "TestAnswerQuestionA/"
@@ -228,11 +253,11 @@ func TestAnswerQuestionA(t *testing.T) {
 
     // Verify the header is correct
     if header.Name != "bar.disco.net." {
-        t.Error("Expected record with name disco.net.: ", header.Name)
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
         t.Fail()
     }
     if header.Rrtype != dns.TypeA {
-        t.Error("Expected record with type SOA:", header.Rrtype)
+        t.Error("Expected record with type A:", header.Rrtype)
         t.Fail()
     }
 
@@ -268,11 +293,11 @@ func TestAnswerQuestionAAAA(t *testing.T) {
 
     // Verify the header is correct
     if header.Name != "bar.disco.net." {
-        t.Error("Expected record with name disco.net.: ", header.Name)
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
         t.Fail()
     }
     if header.Rrtype != dns.TypeAAAA {
-        t.Error("Expected record with type SOA:", header.Rrtype)
+        t.Error("Expected record with type AAAA:", header.Rrtype)
         t.Fail()
     }
 
@@ -305,45 +330,169 @@ func TestAnswerQuestionANY(t *testing.T) {
     }
 }
 
-func TestLookupAnswersForType(t *testing.T) {
+/**
+ * Test converstion of names (i.e etcd nodes) to single records of different
+ * types.
+ **/
 
-}
+func TestLookupAnswerForA(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForA/"
+    client.Set("TestLookupAnswerForA/net/disco/bar/.A", "1.2.3.4", 0)
 
-func TestNameToKeyConverter(t *testing.T) {
-    var key string
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
 
-    key = nameToKey("foo.net.", "")
-    if key != "/net/foo" {
-        t.Error("Expected key /net/foo")
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fail()
     }
 
-    key = nameToKey("foo.net", "")
-    if key != "/net/foo" {
-        t.Error("Expected key /net/foo")
+    rr := records[0].(*dns.A)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fail()
+    }
+    if header.Rrtype != dns.TypeA {
+        t.Error("Expected record with type A:", header.Rrtype)
+        t.Fail()
+    }
+    if rr.A.String() != "1.2.3.4" {
+        t.Error("Expected A record to be 1.2.3.4: ", rr.A)
+        t.Fail()
+    }
+}
+
+func TestLookupAnswerForAAAA(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForAAAA/"
+    client.Set("TestLookupAnswerForAAAA/net/disco/bar/.AAAA", "::1", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeAAAA)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fail()
     }
 
-    key = nameToKey("foo.net.", "/.A")
-    if key != "/net/foo/.A" {
-        t.Error("Expected key /net/foo/.A")
+    rr := records[0].(*dns.AAAA)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fail()
+    }
+    if header.Rrtype != dns.TypeAAAA {
+        t.Error("Expected record with type AAAA:", header.Rrtype)
+        t.Fail()
+    }
+    if rr.AAAA.String() != "::1" {
+        t.Error("Expected AAAA record to be ::1: ", rr.AAAA)
+        t.Fail()
     }
 }
 
-func TestConvertersA(t *testing.T) {
+func TestLookupAnswerForCNAME(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForCNAME/"
+    client.Set("TestLookupAnswerForCNAME/net/disco/bar/.CNAME", "cname.google.com.", 0)
 
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeCNAME)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fail()
+    }
+
+    rr := records[0].(*dns.CNAME)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fail()
+    }
+    if header.Rrtype != dns.TypeCNAME {
+        t.Error("Expected record with type CNAME:", header.Rrtype)
+        t.Fail()
+    }
+    if rr.Target != "cname.google.com." {
+        t.Error("Expected CNAME record to be cname.google.com.: ", rr.Target)
+        t.Fail()
+    }
 }
 
-func TestConvertersAAAA(t *testing.T) {
+func TestLookupAnswerForNS(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForNS/"
+    client.Set("TestLookupAnswerForNS/net/disco/bar/.NS", "dns.google.com.", 0)
 
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeNS)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fail()
+    }
+
+    rr := records[0].(*dns.NS)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fail()
+    }
+    if header.Rrtype != dns.TypeNS {
+        t.Error("Expected record with type NS:", header.Rrtype)
+        t.Fail()
+    }
+    if rr.Ns != "dns.google.com." {
+        t.Error("Expected NS record to be dns.google.com.: ", rr.Ns)
+        t.Fail()
+    }
 }
 
-func TestConvertersCNAME(t *testing.T) {
+func TestLookupAnswerForSOA(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForSOA/"
+    client.Set("TestLookupAnswerForSOA/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
 
-}
+    records, _ := resolver.LookupAnswersForType("disco.net.", dns.TypeSOA)
 
-func TestConvertersNS(t *testing.T) {
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fail()
+    }
 
-}
+    rr := records[0].(*dns.SOA)
+    header := rr.Header()
 
-func TestConvertersSOA(t *testing.T) {
+    if header.Name != "disco.net." {
+        t.Error("Expected record with name disco.net.: ", header.Name)
+        t.Fail()
+    }
+    if header.Rrtype != dns.TypeSOA {
+        t.Error("Expected record with type SOA:", header.Rrtype)
+        t.Fail()
+    }
 
+    // Verify the record itself is correct
+    if rr.Ns != "ns1.disco.net." {
+        t.Error("Expected NS to be ns1.disco.net.: ", rr.Ns)
+        t.Fail()
+    }
+    if rr.Mbox != "admin.disco.net." {
+        t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
+        t.Fail()
+    }
+    if rr.Refresh != 3600 {
+        t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
+        t.Fail()
+    }
+    if rr.Retry != 600 {
+        t.Error("Expected RETRY to be 600: ", rr.Retry)
+        t.Fail()
+    }
+    if rr.Expire != 86400 {
+        t.Error("Expected EXPIRE to be 86400: ", rr.Expire)
+        t.Fail()
+    }
+    if rr.Minttl != 10 {
+        t.Error("Expected MINTTL to be 10: ", rr.Minttl)
+        t.Fail()
+    }
 }
