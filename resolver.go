@@ -71,7 +71,7 @@ func (r *Resolver) Authority(domain string) (soa *dns.SOA) {
         if len(answers) == 1 {
             soa = answers[0].(*dns.SOA)
             soa.Serial = uint32(time.Now().Truncate(time.Hour).Unix())
-            return // TODO(tarnfeld): Ensure we have test coverage for this, nested SOAs
+            return
         }
     }
 
