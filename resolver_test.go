@@ -224,6 +224,66 @@ func TestAuthorityDomain(t *testing.T) {
     }
 }
 
+func TestAuthoritySubdomain(t *testing.T) {
+    resolver.etcdPrefix = "TestAuthoritySubdomain/"
+    client.Set("TestAuthoritySubdomain/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAuthoritySubdomain/net/disco/bar/.SOA", "ns1.bar.disco.net.\\tbar.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+
+    query := new(dns.Msg)
+    query.SetQuestion("foo.bar.disco.net.", dns.TypeA)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) > 0 {
+        t.Error("Expected zero answers")
+        t.Fatal()
+    }
+
+    if len(answer.Ns) != 1 {
+        t.Error("Expected one authority record")
+        t.Fatal()
+    }
+
+    rr := answer.Ns[0].(*dns.SOA)
+    header := rr.Header()
+
+    // Verify the header is correct
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeSOA {
+        t.Error("Expected record with type SOA:", header.Rrtype)
+        t.Fatal()
+    }
+
+    // Verify the record itself is correct
+    if rr.Ns != "ns1.bar.disco.net." {
+        t.Error("Expected NS to be ns1.disco.net.: ", rr.Ns)
+        t.Fatal()
+    }
+    if rr.Mbox != "bar.disco.net." {
+        t.Error("Expected MBOX to be admin.disco.net.: ", rr.Mbox)
+        t.Fatal()
+    }
+    if rr.Refresh != 3600 {
+        t.Error("Expected REFRESH to be 3600: ", rr.Refresh)
+        t.Fatal()
+    }
+    if rr.Retry != 600 {
+        t.Error("Expected RETRY to be 600: ", rr.Retry)
+        t.Fatal()
+    }
+    if rr.Expire != 86400 {
+        t.Error("Expected EXPIRE to be 86400: ", rr.Expire)
+        t.Fatal()
+    }
+    if rr.Minttl != 10 {
+        t.Error("Expected MINTTL to be 10: ", rr.Minttl)
+        t.Fatal()
+    }
+}
+
 /**
  * Test different that types of DNS queries return the correct answers
  **/
