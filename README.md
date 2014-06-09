@@ -6,26 +6,28 @@ An authoritative DNS *nameserver* that queries an [etcd](http://github.com/coreo
 
 #### Key Features
 
+- Full support for both IPv4 (`A`) and IPv6 (`AAAA`) addresses
 - Full support for `CNAME` alias records
-- Full support for both `NS` and `SOA` records for delegation either between discodns servers, or others.
-- Full support for both IPv4 and IPv6 addresses
-- Multiple resource records of different types per domain
-- Runtime and application metrics are captured regularly for monitoring
+- Full support for both `NS` and `SOA` records for delegation to other nameservers
+- Multiple resource records of different types per domain (where valid)
+- Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
 - Support for wildcard domains
 
 #### Coming Soon
 
 - Support for SRV records
-- Support for configurable TTLs
+- Support for configurable TTLs on a per-record basis
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 
 ### Why is this useful?
 
-We built discodns to be the backbone of our internal DNS infrastructure, providing us with a robust and distributed nameserver system to use. It allows us to register domains in any format, without imposing restrictions on how hosts or services are named.
+We built discodns to be the backbone of our internal DNS infrastructure, providing us with a robust and distributed nameserver system to use. It allows us to register domains in any format, with a variety of record types, without imposing restrictions on how hosts or services are named (unlike other DNS service discovery systems). It was also important to us for it to be very easy and fast to add or remove DNS records, so a file-based solution wasn't a simple option.
 
 ### Why etcd?
 
 The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with some very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services can utilize the same etcd cluster to both publish and subscribe to changes in the domain name system.
+
+We chose etcd as an alternative to ZooKeeper for a few reasons. It's API is much simpler for users to use, and it uses [RAFT](http://raftconsensus.github.io/) instead of [Paxos](http://en.wikipedia.org/wiki/Paxos_(computer_science)) (which contributed to it being a simpler to understand and easier to manage system). Also unlike Zookeeper, if a majority of nodes in the cluster enter a failed state, remaining nodes are still able to serve read queries. This is very useful, as it allows the DNS cluster to enter a semi-failed state without being down completely (accepting reads but no writes).
 
 ## Getting Started
 
