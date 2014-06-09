@@ -27,7 +27,7 @@ We built discodns to be the backbone of our internal DNS infrastructure, providi
 
 The choice was made as [etcd](http://github.com/coreos/etcd) is a simple, distributable k/v store with some very useful features that lend themselves well to solving the problem of service discovery. This DNS resolver is not designed to be the single point for discovering services throughout a network, but to make it easier. Services can utilize the same etcd cluster to both publish and subscribe to changes in the domain name system.
 
-We chose etcd as an alternative to ZooKeeper for a few reasons. It's API is much simpler for users to use, and it uses [RAFT](http://raftconsensus.github.io/) instead of [Paxos](http://en.wikipedia.org/wiki/Paxos_(computer_science)) (which contributed to it being a simpler to understand and easier to manage system). Also unlike Zookeeper, if a majority of nodes in the cluster enter a failed state, remaining nodes are still able to serve read queries. This is very useful, as it allows the DNS cluster to enter a semi-failed state without being down completely (accepting reads but no writes).
+We chose etcd as an alternative to ZooKeeper for a few reasons. It's API is much simpler for users to use, and it uses [RAFT](http://raftconsensus.github.io/) instead of [Paxos](http://en.wikipedia.org/wiki/Paxos_(computer_science)) (which contributed to it being a simpler to understand and easier to manage system). Also unlike ZooKeeper, if a majority of nodes in the cluster enter a failed state, remaining nodes are still able to serve read queries. This is very useful, as it allows the DNS cluster to enter a semi-failed state without being down completely (accepting reads but no writes).
 
 ## Getting Started
 
