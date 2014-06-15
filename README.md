@@ -186,3 +186,9 @@ Only a select few of record types are supported right now. These are listed here
 - `TXT`
 - `CNAME`
 - `NS`
+
+## Contributions
+
+All contributions are welcome and encouraged! Please feel free to open a pull request no matter how large or small.
+
+The project is [licensed under MIT](https://github.com/duedil-ltd/discodns/blob/master/LICENSE).
