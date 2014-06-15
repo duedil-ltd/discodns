@@ -22,7 +22,9 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 
 ### Why did we build discodns?
 
-We built discodns to be the backbone of our internal DNS infrastructure, providing us with a robust and distributed nameserver system to use. It allows us to register domains in any format, with a variety of record types, without imposing restrictions on how hosts or services must be named. Since discodns is not a recursive resolver, nor does it implement it's own cache, you should front queries with a forwarder ([BIND](http://www.isc.org/downloads/bind/), for example) as seen in the diagram below.
+When building infrastructure of sufficient complexity -- especially elastic infrastructure -- we've found it's really valuable to have a fast and flexible system for service **identity** and discovery. Crucially, it has to support different naming conventions and work with a wide variety of platform tooling and service software. DNS has proved itself to be capable in that role for over 25 years.
+
+Since discodns is not a recursive resolver, nor does it implement it's own cache, you should front queries with a forwarder ([BIND](http://www.isc.org/downloads/bind/), for example) as seen in the diagram below.
 
              +-----------+   +---------+
              |           |   |         |
