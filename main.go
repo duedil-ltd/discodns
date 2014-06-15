@@ -20,7 +20,7 @@ var (
     Options struct {
         ListenAddress       string      `short:"l" long:"listen" description:"Listen IP address" default:"0.0.0.0"`
         ListenPort          int         `short:"p" long:"port" description:"Port to listen on" default:"53"`
-        EtcdHosts           []string    `short:"e" long:"etcd" description:"host:port for etcd hosts" default:"127.0.0.1:4001"`
+        EtcdHosts           []string    `short:"e" long:"etcd" description:"host:port[,host:port] for etcd hosts" default:"127.0.0.1:4001"`
         Debug               bool        `short:"v" long:"debug" description:"Enable debug logging"`
         MetricsDuration     int         `short:"m" long:"metrics" description:"Dump metrics to stderr every N seconds" default:"30"`
         GraphiteServer      string      `long:"graphite" description:"Graphite server to send metrics to"`
