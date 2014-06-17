@@ -19,6 +19,7 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 - Support for SRV records
 - Support for configurable TTLs on a per-record basis (currently everything has a TTL of 0)
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
+- Better error handling ([see #10](https://github.com/duedil-ltd/discodns/issues/10))
 
 #### Production Readyness
 
