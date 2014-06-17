@@ -20,6 +20,12 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 - Support for configurable TTLs on a per-record basis (currently everything has a TTL of 0)
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 
+#### Production Readyness
+
+Can I use this in production? TLDR; Yes, with caution.
+
+We've been running discodns in some production environments with little issue, though that is not to say it's bug free! If you find any issues, please submit a [bug report](https://github.com/duedil-ltd/discodns/issues/new) or pull request.
+
 ### Why did we build discodns?
 
 When building infrastructure of sufficient complexity -- especially elastic infrastructure -- we've found it's really valuable to have a fast and flexible system for service **identity** and discovery. Crucially, it has to support different naming conventions and work with a wide variety of platform tooling and service software. DNS has proved itself to be capable in that role for over 25 years.
