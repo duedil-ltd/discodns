@@ -41,7 +41,7 @@ Since discodns is not a recursive resolver, nor does it implement it's own cache
                     |             |
              +------v-------------v----+
              |                         |
-             |     Front Resolvers     |
+             |    Forwarders (BIND)    |
              |                         |
              +----+---+---------+------+
                   |   |         |
