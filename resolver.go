@@ -352,6 +352,11 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
         return
     },
 
+    dns.TypePTR: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        rr = &dns.PTR{header, dns.Fqdn(node.Value)}
+        return
+    },
+
     dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
         parts := strings.SplitN(node.Value, "\\t", 6)
 
