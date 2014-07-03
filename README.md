@@ -12,13 +12,13 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
     - Both IPv4 (`A`) and IPv6 (`AAAA`) addresses
     - `CNAME` alias records
     - Delegation via `NS` and `SOA` records
+    - `SRV` and `PTR` for service discovery and reverse domain lookups
 - Multiple resource records of different types per domain (where valid)
 - Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
 - Support for wildcard domains
 
 #### Coming Soon
 
-- Support for SRV records
 - Support for configurable TTLs on a per-record basis (currently everything has a TTL of 0)
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 - Better error handling ([see #10](https://github.com/duedil-ltd/discodns/issues/10))
@@ -197,6 +197,8 @@ Only a select few of record types are supported right now. These are listed here
 - `TXT`
 - `CNAME`
 - `NS`
+- `PTR`
+- `SRV`
 
 ## Contributions
 
