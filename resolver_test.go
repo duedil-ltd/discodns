@@ -722,10 +722,7 @@ func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
 
     for name, value := range bad_vals_map {
 
-        t.Error(name, value)
-
         client.Set("TestLookupAnswerForSRVInvalidValues/net/disco/" + name + "/.SRV", value, 0)
-
         records, err := resolver.LookupAnswersForType(name + ".disco.net.", dns.TypeSRV)
 
         if len(records) > 0 {
