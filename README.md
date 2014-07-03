@@ -2,6 +2,8 @@
 discodns
 ======
 
+![](https://travis-ci.org/duedil-ltd/discodns.png)
+
 An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/etcd) database of domains and records.
 
 #### Key Features
