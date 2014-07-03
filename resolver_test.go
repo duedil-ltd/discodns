@@ -672,3 +672,37 @@ func TestLookupAnswerForPTRInvalidDomain(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestLookupAnswerForSRV(t *testing.T) {
+
+    resolver.etcdPrefix = "TestLookupAnswerForSRV/"
+    client.Set("TestLookupAnswerForSRV/net/disco/_tcp/_http/.SRV",
+        "100\\t100\\t80\\tsome-webserver.disco.net",
+        0)
+
+    records, _ := resolver.LookupAnswersForType("_http._tcp.disco.net.", dns.TypeSRV)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fatal()
+    }
+
+    rr := records[0].(*dns.SRV)
+
+    if rr.Priority != 100 {
+        t.Error("Unexpected 'priority' value for SRV record:", rr.Priority)
+    }
+
+    if rr.Weight != 100 {
+        t.Error("Unexpected 'weight' value for SRV record:", rr.Weight)
+    }
+
+    if rr.Port != 80 {
+        t.Error("Unexpected 'port' value for SRV record:", rr.Port)
+    }
+
+    if rr.Target != "some-webserver.disco.net." {
+        t.Error("Unexpected 'target' value for SRV record:", rr.Target)
+    }
+}
+
