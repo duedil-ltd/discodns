@@ -654,3 +654,21 @@ func TestLookupAnswerForPTR(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestLookupAnswerForPTRInvalidDomain(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForPTRInvalidDomain/"
+
+    client.Set("TestLookupAnswerForPTRInvalidDomain/net/disco/bad-alias/.PTR", "...", 0)
+
+    records, err := resolver.LookupAnswersForType("bad-alias.disco.net.", dns.TypePTR)
+
+    if len(records) > 0 {
+        t.Error("Expected no answers, got ", len(records))
+        t.Fatal()
+    }
+
+    if err == nil {
+        t.Error("Expected error, didn't get one")
+        t.Fatal()
+    }
+}
