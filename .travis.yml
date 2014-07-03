@@ -10,4 +10,4 @@ install:
   - "etcd-v0.4.4-linux-amd64/etcd -name travis &"
   - "sleep 5" # Wait for etcd to come up
 cache: apt
-script: make test
+script: "make get && make test"
