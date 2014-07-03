@@ -352,6 +352,20 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
         return
     },
 
+    dns.TypePTR: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        labels, ok := dns.IsDomainName(node.Value)
+
+        if (ok && labels > 0) {
+            rr = &dns.PTR{header, dns.Fqdn(node.Value)}
+        } else {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Value '%s' isn't a valid domain name", node.Value),
+                AttemptedType: dns.TypePTR}
+        }
+        return
+    },
+
     dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
         parts := strings.SplitN(node.Value, "\\t", 6)
 

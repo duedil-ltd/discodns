@@ -610,3 +610,65 @@ func TestLookupAnswerForSOA(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestLookupAnswerForPTR(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForPTR/"
+
+    client.Set("TestLookupAnswerForPTR/net/disco/alias/.PTR/target1", "target1.disco.net.", 0)
+    client.Set("TestLookupAnswerForPTR/net/disco/alias/.PTR/target2", "target2.disco.net.", 0)
+
+    records, _ := resolver.LookupAnswersForType("alias.disco.net.", dns.TypePTR)
+
+    if len(records) != 2 {
+        t.Error("Expected two answers, got ", len(records))
+        t.Fatal()
+    }
+
+    seen_1 := false
+    seen_2 := false
+
+    // We can't (and shouldn't try to) guarantee order, so check for all
+    // expected records the long way
+    for _, record := range records {
+        rr := record.(*dns.PTR)
+        header := rr.Header()
+
+        if header.Rrtype != dns.TypePTR {
+            t.Error("Expected record with type PTR:", header.Rrtype)
+            t.Fatal()
+        }
+
+        t.Log(rr)
+
+        if rr.Ptr == "target1.disco.net." {
+            seen_1 = true
+        }
+
+        if rr.Ptr == "target2.disco.net." {
+            seen_2 = true
+        }
+    }
+
+    if seen_1 == false || seen_2 == false {
+        t.Error("Didn't get back all expected PTR responses")
+        t.Fatal()
+    }
+}
+
+func TestLookupAnswerForPTRInvalidDomain(t *testing.T) {
+    resolver.etcdPrefix = "TestLookupAnswerForPTRInvalidDomain/"
+
+    client.Set("TestLookupAnswerForPTRInvalidDomain/net/disco/bad-alias/.PTR", "...", 0)
+
+    records, err := resolver.LookupAnswersForType("bad-alias.disco.net.", dns.TypePTR)
+
+    if len(records) > 0 {
+        t.Error("Expected no answers, got ", len(records))
+        t.Fatal()
+    }
+
+    if err == nil {
+        t.Error("Expected error, didn't get one")
+        t.Fatal()
+    }
+}
