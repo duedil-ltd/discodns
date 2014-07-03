@@ -182,13 +182,7 @@ discodns.net.     0   IN  A   10.1.1.1
 discodns.net.     0   IN  A   10.1.1.2
 ````
 
-### Metrics
-
-The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
-
-You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
-
-## Notes
+### Record Types
 
 Only a select few of record types are supported right now. These are listed here:
 
@@ -199,6 +193,12 @@ Only a select few of record types are supported right now. These are listed here
 - `NS`
 - `PTR`
 - `SRV`
+
+## Metrics
+
+The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
+
+You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
 
 ## Contributions
 
