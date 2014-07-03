@@ -161,7 +161,7 @@ curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.NS/ns2 -XPUT -d value=ns2.di
 
 ## Storage
 
-The records are stored in a reverse domain format, i.e `discodns.net` would equate to the key `net/discodns`. See the examples below;
+The record names are used as etcd key prefixes. They are in a reverse domain format, i.e `discodns.net` would equate to the key `net/discodns`. See the examples below;
 
 - `discodns.net. -> A record -> [10.1.1.1, 10.1.1.2]`
     - `/net/discodns/.A/foo -> 10.1.1.1`
