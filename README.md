@@ -159,7 +159,7 @@ curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.NS/ns2 -XPUT -d value=ns2.di
 
 **Don't forget to ensure you also add `A` records for the `ns{1,2}.discodns.net` domains to ensure they can resolve to IPs.**
 
-### Storage
+## Storage
 
 The records are stored in a reverse domain format, i.e `discodns.net` would equate to the key `net/discodns`. See the examples below;
 
