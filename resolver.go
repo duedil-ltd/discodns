@@ -391,16 +391,6 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
                 return nil, err
             }
 
-            labels, ok := dns.IsDomainName(parts[3])
-
-            if (!ok || labels == 0) {
-                err = &NodeConversionError{
-                    Node: node,
-                    Message: fmt.Sprintf("Value '%s' isn't a valid domain name", parts[3]),
-                    AttemptedType: dns.TypeSRV}
-                return nil, err
-            }
-
             target := dns.Fqdn(parts[3])
 
             rr = &dns.SRV{
