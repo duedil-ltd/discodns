@@ -672,3 +672,71 @@ func TestLookupAnswerForPTRInvalidDomain(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestLookupAnswerForSRV(t *testing.T) {
+
+    resolver.etcdPrefix = "TestLookupAnswerForSRV/"
+    client.Set("TestLookupAnswerForSRV/net/disco/_tcp/_http/.SRV",
+        "100\\t100\\t80\\tsome-webserver.disco.net",
+        0)
+
+    records, _ := resolver.LookupAnswersForType("_http._tcp.disco.net.", dns.TypeSRV)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fatal()
+    }
+
+    rr := records[0].(*dns.SRV)
+
+    if rr.Priority != 100 {
+        t.Error("Unexpected 'priority' value for SRV record:", rr.Priority)
+    }
+
+    if rr.Weight != 100 {
+        t.Error("Unexpected 'weight' value for SRV record:", rr.Weight)
+    }
+
+    if rr.Port != 80 {
+        t.Error("Unexpected 'port' value for SRV record:", rr.Port)
+    }
+
+    if rr.Target != "some-webserver.disco.net." {
+        t.Error("Unexpected 'target' value for SRV record:", rr.Target)
+    }
+}
+
+func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
+
+    resolver.etcdPrefix = "TestLookupAnswerForSRVInvalidValues/"
+
+    var bad_vals_map = map[string]string {
+        "wrong-delimiter":      "10 10 80 foo.disco.net",
+        "not-enough-fields":    "0\\t0",
+        "neg-int-priority":     "-10\\t10\\t80\\tfoo.disco.net",
+        "neg-int-weight":       "10\\t-10\\t80\\tfoo.disco.net",
+        "neg-int-port":         "10\\t10\\t-80\\tfoo.disco.net",
+        "large-int-priority":   "65536\\t10\\t80\\tfoo.disco.net",
+        "large-int-weight":     "10\\t65536\\t80\\tfoo.disco.net",
+        "large-int-port":       "10\\t10\\t65536\\tfoo.disco.net"}
+
+    for name, value := range bad_vals_map {
+
+        t.Error(name, value)
+
+        client.Set("TestLookupAnswerForSRVInvalidValues/net/disco/" + name + "/.SRV", value, 0)
+
+        records, err := resolver.LookupAnswersForType(name + ".disco.net.", dns.TypeSRV)
+
+        if len(records) > 0 {
+            t.Error("Expected no answers, got ", len(records))
+            t.Fatal()
+        }
+
+        if err == nil {
+            t.Error("Expected error, didn't get one")
+            t.Fatal()
+        }
+    }
+}
+

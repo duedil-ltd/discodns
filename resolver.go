@@ -366,6 +366,43 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
         return
     },
 
+    dns.TypeSRV: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+        parts := strings.SplitN(node.Value, "\\t", 4)
+
+        if len(parts) != 4 {
+            err = &NodeConversionError{
+                Node: node,
+                Message: fmt.Sprintf("Value %s isn't valid for SRV", node.Value),
+                AttemptedType: dns.TypeSRV}
+        } else {
+
+            priority, err := strconv.ParseUint(parts[0], 10, 16)
+            if err != nil {
+                return nil, err
+            }
+
+            weight, err := strconv.ParseUint(parts[1], 10, 16)
+            if err != nil {
+                return nil, err
+            }
+
+            port, err := strconv.ParseUint(parts[2], 10, 16)
+            if err != nil {
+                return nil, err
+            }
+
+            target := dns.Fqdn(parts[3])
+
+            rr = &dns.SRV{
+                header,
+                uint16(priority),
+                uint16(weight),
+                uint16(port),
+                target}
+        }
+        return
+    },
+
     dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
         parts := strings.SplitN(node.Value, "\\t", 6)
 
