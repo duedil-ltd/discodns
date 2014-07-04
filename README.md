@@ -12,13 +12,13 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
     - Both IPv4 (`A`) and IPv6 (`AAAA`) addresses
     - `CNAME` alias records
     - Delegation via `NS` and `SOA` records
+    - `SRV` and `PTR` for service discovery and reverse domain lookups
 - Multiple resource records of different types per domain (where valid)
 - Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
 - Support for wildcard domains
 
 #### Coming Soon
 
-- Support for SRV records
 - Support for configurable TTLs on a per-record basis (currently everything has a TTL of 0)
 - Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
 - Better error handling ([see #10](https://github.com/duedil-ltd/discodns/issues/10))
@@ -159,9 +159,9 @@ curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.NS/ns2 -XPUT -d value=ns2.di
 
 **Don't forget to ensure you also add `A` records for the `ns{1,2}.discodns.net` domains to ensure they can resolve to IPs.**
 
-### Storage
+## Storage
 
-The records are stored in a reverse domain format, i.e `discodns.net` would equate to the key `net/discodns`. See the examples below;
+The record names are used as etcd key prefixes. They are in a reverse domain format, i.e `discodns.net` would equate to the key `net/discodns`. See the examples below;
 
 - `discodns.net. -> A record -> [10.1.1.1, 10.1.1.2]`
     - `/net/discodns/.A/foo -> 10.1.1.1`
@@ -182,13 +182,7 @@ discodns.net.     0   IN  A   10.1.1.1
 discodns.net.     0   IN  A   10.1.1.2
 ````
 
-### Metrics
-
-The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
-
-You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
-
-## Notes
+### Record Types
 
 Only a select few of record types are supported right now. These are listed here:
 
@@ -197,6 +191,54 @@ Only a select few of record types are supported right now. These are listed here
 - `TXT`
 - `CNAME`
 - `NS`
+- `PTR`
+- `SRV`
+
+### Value storage formats
+
+All records in etcd are, of course, just strings. Most record types only require simple string values with no special considerations, except their natural constraints and types within DNS (valid IP addresses, for example)
+
+In cases where multiple pieces of information are needed for a record, they are separated with **single tab characters**.
+
+These more complex cases are:
+
+#### SOA
+
+Consists of the following tab-delimited fields in order:
+
+- Primary nameserver
+- 'Responsible Person' (admin email)
+- Refresh
+- Retry
+- Expire
+- Minimum TTL
+
+See the SOA example above for more details
+
+### SRV
+
+Consists of the following tab-delimited fields in order:
+
+- Priority
+    - For clients wishing to choose between multiple service instances
+    - 16bit unsigned int
+- Weight
+    - For clients wishing to choose between multiple service instances
+    - 16bit unsigned int
+- Port
+    - The standard port number where the service can be found on the host
+    - 16bit unsigned int
+- Target
+    - a regular domain name for the host where the service can be found
+    - _must_ be resolvable to an A/AAAA record.
+
+For more about the Priority and Weight fields, including the algorithm to use when choosing, see [RFC2782](https://www.ietf.org/rfc/rfc2782.txt).
+
+## Metrics
+
+The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
+
+You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
 
 ## Contributions
 
