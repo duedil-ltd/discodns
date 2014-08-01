@@ -367,7 +367,7 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
     },
 
     dns.TypeSRV: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        parts := strings.SplitN(node.Value, "\\t", 4)
+        parts := strings.SplitN(node.Value, "\t", 4)
 
         if len(parts) != 4 {
             err = &NodeConversionError{
@@ -404,7 +404,7 @@ var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns
     },
 
     dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        parts := strings.SplitN(node.Value, "\\t", 6)
+        parts := strings.SplitN(node.Value, "\t", 6)
 
         if len(parts) < 6 {
             err = &NodeConversionError{
