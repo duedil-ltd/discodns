@@ -105,7 +105,7 @@ func TestNameToKeyConverter(t *testing.T) {
 
 func TestAuthorityRoot(t *testing.T) {
     resolver.etcdPrefix = "TestAuthorityRoot/"
-    client.Set("TestAuthorityRoot/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAuthorityRoot/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
 
     query := new(dns.Msg)
     query.SetQuestion("disco.net.", dns.TypeA)
@@ -167,7 +167,7 @@ func TestAuthorityRoot(t *testing.T) {
 
 func TestAuthorityDomain(t *testing.T) {
     resolver.etcdPrefix = "TestAuthorityDomain/"
-    client.Set("TestAuthorityDomain/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAuthorityDomain/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
 
     query := new(dns.Msg)
     query.SetQuestion("bar.disco.net.", dns.TypeA)
@@ -226,8 +226,8 @@ func TestAuthorityDomain(t *testing.T) {
 
 func TestAuthoritySubdomain(t *testing.T) {
     resolver.etcdPrefix = "TestAuthoritySubdomain/"
-    client.Set("TestAuthoritySubdomain/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
-    client.Set("TestAuthoritySubdomain/net/disco/bar/.SOA", "ns1.bar.disco.net.\\tbar.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAuthoritySubdomain/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
+    client.Set("TestAuthoritySubdomain/net/disco/bar/.SOA", "ns1.bar.disco.net.\tbar.disco.net.\t3600\t600\t86400\t10", 0)
 
     query := new(dns.Msg)
     query.SetQuestion("foo.bar.disco.net.", dns.TypeA)
@@ -291,7 +291,7 @@ func TestAuthoritySubdomain(t *testing.T) {
 func TestAnswerQuestionA(t *testing.T) {
     resolver.etcdPrefix = "TestAnswerQuestionA/"
     client.Set("TestAnswerQuestionA/net/disco/bar/.A", "1.2.3.4", 0)
-    client.Set("TestAnswerQuestionA/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAnswerQuestionA/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
 
     query := new(dns.Msg)
     query.SetQuestion("bar.disco.net.", dns.TypeA)
@@ -331,7 +331,7 @@ func TestAnswerQuestionA(t *testing.T) {
 func TestAnswerQuestionAAAA(t *testing.T) {
     resolver.etcdPrefix = "TestAnswerQuestionAAAA/"
     client.Set("TestAnswerQuestionAAAA/net/disco/bar/.AAAA", "::1", 0)
-    client.Set("TestAnswerQuestionAAAA/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestAnswerQuestionAAAA/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
 
     query := new(dns.Msg)
     query.SetQuestion("bar.disco.net.", dns.TypeAAAA)
@@ -563,7 +563,7 @@ func TestLookupAnswerForNS(t *testing.T) {
 
 func TestLookupAnswerForSOA(t *testing.T) {
     resolver.etcdPrefix = "TestLookupAnswerForSOA/"
-    client.Set("TestLookupAnswerForSOA/net/disco/.SOA", "ns1.disco.net.\\tadmin.disco.net.\\t3600\\t600\\t86400\\t10", 0)
+    client.Set("TestLookupAnswerForSOA/net/disco/.SOA", "ns1.disco.net.\tadmin.disco.net.\t3600\t600\t86400\t10", 0)
 
     records, _ := resolver.LookupAnswersForType("disco.net.", dns.TypeSOA)
 
@@ -677,7 +677,7 @@ func TestLookupAnswerForSRV(t *testing.T) {
 
     resolver.etcdPrefix = "TestLookupAnswerForSRV/"
     client.Set("TestLookupAnswerForSRV/net/disco/_tcp/_http/.SRV",
-        "100\\t100\\t80\\tsome-webserver.disco.net",
+        "100\t100\t80\tsome-webserver.disco.net",
         0)
 
     records, _ := resolver.LookupAnswersForType("_http._tcp.disco.net.", dns.TypeSRV)
@@ -712,13 +712,13 @@ func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
 
     var bad_vals_map = map[string]string {
         "wrong-delimiter":      "10 10 80 foo.disco.net",
-        "not-enough-fields":    "0\\t0",
-        "neg-int-priority":     "-10\\t10\\t80\\tfoo.disco.net",
-        "neg-int-weight":       "10\\t-10\\t80\\tfoo.disco.net",
-        "neg-int-port":         "10\\t10\\t-80\\tfoo.disco.net",
-        "large-int-priority":   "65536\\t10\\t80\\tfoo.disco.net",
-        "large-int-weight":     "10\\t65536\\t80\\tfoo.disco.net",
-        "large-int-port":       "10\\t10\\t65536\\tfoo.disco.net"}
+        "not-enough-fields":    "0\t0",
+        "neg-int-priority":     "-10\t10\t80\tfoo.disco.net",
+        "neg-int-weight":       "10\t-10\t80\tfoo.disco.net",
+        "neg-int-port":         "10\t10\t-80\tfoo.disco.net",
+        "large-int-priority":   "65536\t10\t80\tfoo.disco.net",
+        "large-int-weight":     "10\t65536\t80\tfoo.disco.net",
+        "large-int-port":       "10\t10\t65536\tfoo.disco.net"}
 
     for name, value := range bad_vals_map {
 
