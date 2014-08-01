@@ -126,20 +126,22 @@ If you're not familiar with the DNS specification, to behave *correctly* as an a
 #### SOA
 
 ```shell
-curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.SOA -XPUT -d value="ns1.discodns.net.\tadmin.discodns.net.\t3600\t600\t86400\t10"
+curl -L http://127.0.0.1:4001/v2/keys/net/discodns/.SOA -XPUT -d value=$'ns1.discodns.net.\tadmin.discodns.net.\t3600\t600\t86400\t10'
 {"action":"set","node":{"key":"/net/discodns/.SOA","value":"...","modifiedIndex":11,"createdIndex":11}}
 ```
 
 Let's break out the value and see what we've got.
 
 ```
-ns1.discodns.net \t     << - This is the root, master nameserver for this delegated domain
-admin.discodns.net \t   << - This is the "admin" email address, note the first segment is actually the user (`admin@discodns.net`)
-3600 \t                 << - Time in seconds for any secondary DNS servers to cache the zone (used with `AXFR`)
-600 \t                  << - Interval in seconds for any secondary DNS servers to re-try in the event of a failed zone update
-86400 \t                << - Expiry time in seconds for any secondary DNS server to drop the zone data (too old)
-10                      << - Minimum TTL that applies to all DNS entries in the zone
+ns1.discodns.net     << - This is the root, master nameserver for this delegated domain
+admin.discodns.net   << - This is the "admin" email address, note the first segment is actually the user (`admin@discodns.net`)
+3600                 << - Time in seconds for any secondary DNS servers to cache the zone (used with `AXFR`)
+600                  << - Interval in seconds for any secondary DNS servers to re-try in the event of a failed zone update
+86400                << - Expiry time in seconds for any secondary DNS server to drop the zone data (too old)
+10                   << - Minimum TTL that applies to all DNS entries in the zone
 ```
+
+These are all tab-separated in the PUT request body. (The `$''` is just a convenience to neatly escape tabs in bash; you could use regular bash strings, with `\u0009` or `%09` for the tab chars, too)
 
 **Note:** If you're familiar with SOA records, you'll probably notice a value missing from above. The "Serial Number" (should be in the 3rd position) is actually filled in automatically by discodns, because it uses the current index of the etcd cluster to describe the current version of the zone. (TODO).
 
