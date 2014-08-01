@@ -10,6 +10,7 @@ import (
     "runtime"
     "time"
     "net"
+    "strings"
 )
 
 var (
@@ -53,7 +54,15 @@ func main() {
             logger.Fatalf("Failed to parse graphite server: ", err)
         }
 
-        go metrics.Graphite(metrics.DefaultRegistry, time.Duration(Options.GraphiteDuration) * time.Second, "discodns", addr)
+        prefix := "discodns"
+        hostname, err := os.Hostname()
+        if err != nil {
+            logger.Fatalf("Unable to get hostname: ", err)
+        }
+
+        prefix = prefix + "." + strings.Replace(hostname, ".", "_", -1)
+
+        go metrics.Graphite(metrics.DefaultRegistry, time.Duration(Options.GraphiteDuration) * time.Second, prefix, addr)
     } else if Options.MetricsDuration > 0 {
         go metrics.Log(metrics.DefaultRegistry, time.Duration(Options.MetricsDuration) * time.Second, logger)
 
