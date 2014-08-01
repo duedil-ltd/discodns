@@ -39,7 +39,6 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
             }
         }
 
-        response.Close()
         debugMsg("Sent response to ", response.RemoteAddr())
     })
 }
