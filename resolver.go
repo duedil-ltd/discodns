@@ -109,7 +109,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
         // If we failed to find any answers, let's keep looking up the tree for
         // any wildcard domain entries.
-        if len(answers) == 0 {
+        if len(msg.Answer) == 0 {
             parts := strings.Split(q.Name, ".")
             for level := 1; level < len(parts); level++ {
                 domain := strings.Join(parts[level:], ".")
