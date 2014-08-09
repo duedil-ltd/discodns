@@ -444,6 +444,78 @@ func TestAnswerQuestionWildcardAAAA(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionTTL(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A", "1.2.3.4", 0)
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A.ttl", "300", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fatal()
+    }
+
+    rr := records[0].(*dns.A)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeA {
+        t.Error("Expected record with type A:", header.Rrtype)
+        t.Fatal()
+    }
+    if header.Ttl != 300 {
+        t.Error("Expected TTL of 300 seconds:", header.Ttl)
+        t.Fatal()
+    }
+    if rr.A.String() != "1.2.3.4" {
+        t.Error("Expected A record to be 1.2.3.4: ", rr.A)
+        t.Fatal()
+    }
+}
+
+func TestAnswerQuestionTTLMultipleRecords(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/0", "1.2.3.4", 0)
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/0.ttl", "300", 0)
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/1", "8.8.8.8", 0)
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/1.ttl", "600", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+
+    if len(records) != 2 {
+        t.Error("Expected two answers, got ", len(records))
+        t.Fatal()
+    }
+
+    rrOne := records[0].(*dns.A)
+    headerOne := rrOne.Header()
+
+    if headerOne.Ttl != 300 {
+        t.Error("Expected TTL of 300 seconds:", headerOne.Ttl)
+        t.Fatal()
+    }
+    if rrOne.A.String() != "1.2.3.4" {
+        t.Error("Expected A record to be 1.2.3.4: ", rrOne.A)
+        t.Fatal()
+    }
+
+    rrTwo := records[1].(*dns.A)
+    headerTwo := rrTwo.Header()
+
+    if headerTwo.Ttl != 600 {
+        t.Error("Expected TTL of 300 seconds:", headerTwo.Ttl)
+        t.Fatal()
+    }
+    if rrTwo.A.String() != "8.8.8.8" {
+        t.Error("Expected A record to be 8.8.8.8: ", rrTwo.A)
+        t.Fatal()
+    }
+}
+
 /**
  * Test converstion of names (i.e etcd nodes) to single records of different
  * types.
@@ -736,4 +808,3 @@ func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
         }
     }
 }
-
