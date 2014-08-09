@@ -213,6 +213,8 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
         wg.Add(1)
 
         go func() {
+            defer wg.Done()
+
             records, err := r.LookupAnswersForType(q.Name, q.Qtype)
             if err != nil {
                 errors <- err
@@ -236,8 +238,6 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
                     }
                 }
             }
-
-            wg.Done()
         }()
     }
 }
