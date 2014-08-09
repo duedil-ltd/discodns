@@ -46,6 +46,8 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     nodes = make([]*EtcdRecord, 0)
     findKeys = func(node *etcd.Node) {
         if node.Dir == true {
+            // TODO(tarnfeld): If the nodes are sorted, we could optimize querying multiple times
+            // to get the TTL value. Might be worth implementing this at a later date.
             for _, subnode := range node.Nodes {
                 if !strings.HasSuffix(subnode.Key, ".ttl") {
                     findKeys(subnode)
