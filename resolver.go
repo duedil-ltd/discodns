@@ -35,44 +35,64 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     counter.Inc(1)
     debugMsg("Querying etcd for " + key)
 
-    response, err := r.etcd.Get(r.etcdPrefix + key, false, true)
+    response, err := r.etcd.Get(r.etcdPrefix + key, true, true)
     if err != nil {
         error_counter.Inc(1)
         return
     }
 
-    var findKeys func(node *etcd.Node)
+    var findKeys func(node *etcd.Node, ttl uint32, tryTtl bool)
 
     nodes = make([]*EtcdRecord, 0)
-    findKeys = func(node *etcd.Node) {
+    findKeys = func(node *etcd.Node, ttl uint32, tryTtl bool) {
         if node.Dir == true {
-            // TODO(tarnfeld): If the nodes are sorted, we could optimize querying multiple times
-            // to get the TTL value. Might be worth implementing this at a later date.
-            for _, subnode := range node.Nodes {
-                if !strings.HasSuffix(subnode.Key, ".ttl") {
-                    findKeys(subnode)
+            var prevNode *etcd.Node
+            for _, nextNode := range node.Nodes {
+                if prevNode == nil {
+                    prevNode = nextNode
+                    continue
                 }
+
+                if strings.HasSuffix(nextNode.Key, ".ttl") {
+                    ttlValue, err := strconv.ParseUint(nextNode.Value, 10, 32)
+                    if err != nil {
+                        debugMsg("Unable to convert ttl value to int: ", nextNode.Value)
+                    } else {
+                        findKeys(prevNode, uint32(ttlValue), false)
+                        prevNode = nil
+                        continue
+                    }
+                }
+
+                findKeys(prevNode, 0, false)
+                prevNode = nextNode
+            }
+
+            if prevNode != nil {
+                findKeys(prevNode, 0, false)
             }
         } else {
-            record := &EtcdRecord{node, 0}
-            ttlKey := node.Key + ".ttl"
+            // If we don't have a TLL try and find one
+            if tryTtl {
+                ttlKey := node.Key + ".ttl"
 
-            debugMsg("Querying etcd for " + ttlKey)
-            response, err := r.etcd.Get(ttlKey, false, false)
-            if err == nil {
-                ttl, err := strconv.ParseUint(response.Node.Value, 10, 32)
-                if err != nil {
-                    debugMsg("Unable to convert ttl value to int: ", response.Node.Value)
-                } else {
-                    record.ttl = uint32(ttl)
+                debugMsg("Querying etcd for " + ttlKey)
+                response, err := r.etcd.Get(ttlKey, false, false)
+                if err == nil {
+                    ttlValue, err := strconv.ParseUint(response.Node.Value, 10, 32)
+                    if err != nil {
+                        debugMsg("Unable to convert ttl value to int: ", response.Node.Value)
+                    } else {
+                        ttl = uint32(ttlValue)
+                    }
                 }
             }
 
-            nodes = append(nodes, record)
+            nodes = append(nodes, &EtcdRecord{node, ttl})
         }
     }
 
-    findKeys(response.Node)
+    findKeys(response.Node, 0, true)
 
     return
 }
