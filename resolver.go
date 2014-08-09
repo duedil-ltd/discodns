@@ -162,8 +162,8 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     }
 
     // Send the correct authority records
-    soa := r.Authority(q.Name)
     if len(msg.Answer) == 0 {
+        soa := r.Authority(q.Name)
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
         if soa != nil {
