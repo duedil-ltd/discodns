@@ -516,6 +516,39 @@ func TestAnswerQuestionTTLMultipleRecords(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionTTLInvalidFormat(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A", "1.2.3.4", 0)
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A.ttl", "haha", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fatal()
+    }
+
+    rr := records[0].(*dns.A)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeA {
+        t.Error("Expected record with type A:", header.Rrtype)
+        t.Fatal()
+    }
+    if header.Ttl != 0 {
+        t.Error("Expected TTL of 0 seconds:", header.Ttl)
+        t.Fatal()
+    }
+    if rr.A.String() != "1.2.3.4" {
+        t.Error("Expected A record to be 1.2.3.4: ", rr.A)
+        t.Fatal()
+    }
+}
+
 /**
  * Test converstion of names (i.e etcd nodes) to single records of different
  * types.
