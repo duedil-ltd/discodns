@@ -18,11 +18,16 @@ type Resolver struct {
     etcdPrefix  string
 }
 
+type EtcdRecord struct {
+    node    *etcd.Node
+    ttl     uint32
+}
+
 // GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
 //  - File:         /foo/bar/.A -> "value"
 //  - Directory:    /foo/bar/.A/0 -> "value-0"
 //                  /foo/bar/.A/1 -> "value-1"
-func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
+func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
 
     counter := metrics.GetOrRegisterCounter("resolver.etcd.query_count", metrics.DefaultRegistry)
     error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
@@ -38,14 +43,30 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
 
     var findKeys func(node *etcd.Node)
 
-    nodes = make([]*etcd.Node, 0)
+    nodes = make([]*EtcdRecord, 0)
     findKeys = func(node *etcd.Node) {
         if node.Dir == true {
             for _, subnode := range node.Nodes {
-                findKeys(subnode)
+                if !strings.HasSuffix(subnode.Key, ".ttl") {
+                    findKeys(subnode)
+                }
             }
         } else {
-            nodes = append(nodes, node)
+            record := &EtcdRecord{node, 0}
+            ttlKey := node.Key + ".ttl"
+
+            debugMsg("Querying etcd for " + ttlKey)
+            response, err := r.etcd.Get(ttlKey, false, false)
+            if err == nil {
+                ttl, err := strconv.ParseUint(response.Node.Value, 10, 32)
+                if err != nil {
+                    debugMsg("Unable to convert ttl value to int: ", response.Node.Value)
+                } else {
+                    record.ttl = uint32(ttl)
+                }
+            }
+
+            nodes = append(nodes, record)
         }
     }
 
@@ -261,9 +282,8 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     answers = make([]dns.RR, len(nodes))
     for i, node := range nodes {
 
-        // TODO(tarnfeld): TTL 0 - make this configurable
-        header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: 0}
-        answer, err := converters[rrType](node, header)
+        header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: node.ttl}
+        answer, err := converters[rrType](node.node, header)
 
         if err != nil {
             debugMsg("Error converting type: ", err)

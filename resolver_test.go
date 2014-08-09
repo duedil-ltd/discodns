@@ -37,7 +37,7 @@ func TestGetFromStorageSingleKey(t *testing.T) {
     }
 
     node := nodes[0]
-    if node.Value != "1.1.1.1" {
+    if node.node.Value != "1.1.1.1" {
         t.Error("Node value should be 1.1.1.1: ", node)
         t.Fatal()
     }
@@ -60,20 +60,20 @@ func TestGetFromStorageNestedKeys(t *testing.T) {
         t.Fatal()
     }
 
-    var node *etcd.Node
+    var node *EtcdRecord
 
     node = nodes[0]
-    if node.Value != "1.1.1.1" {
+    if node.node.Value != "1.1.1.1" {
         t.Error("Node value should be 1.1.1.1: ", node)
         t.Fatal()
     }
     node = nodes[1]
-    if node.Value != "1.1.1.2" {
+    if node.node.Value != "1.1.1.2" {
         t.Error("Node value should be 1.1.1.2: ", node)
         t.Fatal()
     }
     node = nodes[2]
-    if node.Value != "1.1.1.3" {
+    if node.node.Value != "1.1.1.3" {
         t.Error("Node value should be 1.1.1.3: ", node)
         t.Fatal()
     }
@@ -478,11 +478,11 @@ func TestAnswerQuestionTTL(t *testing.T) {
 }
 
 func TestAnswerQuestionTTLMultipleRecords(t *testing.T) {
-    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/0", "1.2.3.4", 0)
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/0.ttl", "300", 0)
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/1", "8.8.8.8", 0)
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/1.ttl", "600", 0)
+    resolver.etcdPrefix = "TestAnswerQuestionTTLMultipleRecords/"
+    client.Set("TestAnswerQuestionTTLMultipleRecords/net/disco/bar/.A/0", "1.2.3.4", 0)
+    client.Set("TestAnswerQuestionTTLMultipleRecords/net/disco/bar/.A/0.ttl", "300", 0)
+    client.Set("TestAnswerQuestionTTLMultipleRecords/net/disco/bar/.A/1", "8.8.8.8", 0)
+    client.Set("TestAnswerQuestionTTLMultipleRecords/net/disco/bar/.A/1.ttl", "600", 0)
 
     records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
 
