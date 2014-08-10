@@ -109,7 +109,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
         // If we failed to find any answers, let's keep looking up the tree for
         // any wildcard domain entries.
-        if len(answers) == 0 {
+        if len(msg.Answer) == 0 {
             parts := strings.Split(q.Name, ".")
             for level := 1; level < len(parts); level++ {
                 domain := strings.Join(parts[level:], ".")
@@ -162,8 +162,8 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     }
 
     // Send the correct authority records
-    soa := r.Authority(q.Name)
     if len(msg.Answer) == 0 {
+        soa := r.Authority(q.Name)
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
         if soa != nil {
@@ -213,6 +213,8 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
         wg.Add(1)
 
         go func() {
+            defer wg.Done()
+
             records, err := r.LookupAnswersForType(q.Name, q.Qtype)
             if err != nil {
                 errors <- err
@@ -236,8 +238,6 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
                     }
                 }
             }
-
-            wg.Done()
         }()
     }
 }
