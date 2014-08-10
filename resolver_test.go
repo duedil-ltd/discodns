@@ -550,10 +550,10 @@ func TestAnswerQuestionTTLInvalidFormat(t *testing.T) {
 }
 
 func TestAnswerQuestionTTLDanglingNode(t *testing.T) {
-    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A.ttl", "600", 0)
+    resolver.etcdPrefix = "TestAnswerQuestionTTLDanglingNode/"
+    client.Set("TestAnswerQuestionTTLDanglingNode/net/disco/bar/.TXT.ttl", "600", 0)
 
-    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeTXT)
 
     if len(records) != 0 {
         t.Error("Expected no answer, got ", len(records))
@@ -562,10 +562,10 @@ func TestAnswerQuestionTTLDanglingNode(t *testing.T) {
 }
 
 func TestAnswerQuestionTTLDanglingDirNode(t *testing.T) {
-    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A/0.ttl", "600", 0)
+    resolver.etcdPrefix = "TestAnswerQuestionTTLDanglingDirNode/"
+    client.Set("TestAnswerQuestionTTLDanglingDirNode/net/disco/bar/.TXT/0.ttl", "600", 0)
 
-    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeTXT)
 
     if len(records) != 0 {
         t.Error("Expected no answer, got ", len(records))
