@@ -573,6 +573,40 @@ func TestAnswerQuestionTTLDanglingDirNode(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionTTLDanglingDirSibling(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionTTLDanglingDirSibling/"
+    client.Set("TestAnswerQuestionTTLDanglingDirSibling/net/disco/bar/.TXT/0.ttl", "100", 0)
+    client.Set("TestAnswerQuestionTTLDanglingDirSibling/net/disco/bar/.TXT/1", "foo bar", 0)
+    client.Set("TestAnswerQuestionTTLDanglingDirSibling/net/disco/bar/.TXT/1.ttl", "600", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeTXT)
+
+    if len(records) != 1 {
+        t.Error("Expected one answer, got ", len(records))
+        t.Fatal()
+    }
+
+    rr := records[0].(*dns.TXT)
+    header := rr.Header()
+
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeTXT {
+        t.Error("Expected record with type TXT:", header.Rrtype)
+        t.Fatal()
+    }
+    if header.Ttl != 600 {
+        t.Error("Expected TTL of 600 seconds:", header.Ttl)
+        t.Fatal()
+    }
+    if rr.String() != "foo bar" {
+        t.Error("Expected txt record to be 'foo bar': ", rr.Txt)
+        t.Fatal()
+    }
+}
+
 /**
  * Test converstion of names (i.e etcd nodes) to single records of different
  * types.
