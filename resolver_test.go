@@ -549,6 +549,18 @@ func TestAnswerQuestionTTLInvalidFormat(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionTTLDanglingNode(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
+    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A.ttl", "600", 0)
+
+    records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
+
+    if len(records) != 0 {
+        t.Error("Expected no answer, got ", len(records))
+        t.Fatal()
+    }
+}
+
 /**
  * Test converstion of names (i.e etcd nodes) to single records of different
  * types.
