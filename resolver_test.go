@@ -4,6 +4,7 @@ import (
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
     "testing"
+    "strings"
 )
 
 var (
@@ -601,7 +602,7 @@ func TestAnswerQuestionTTLDanglingDirSibling(t *testing.T) {
         t.Error("Expected TTL of 600 seconds:", header.Ttl)
         t.Fatal()
     }
-    if rr.String() != "foo bar" {
+    if strings.Join(rr.Txt, "\n") != "foo bar" {
         t.Error("Expected txt record to be 'foo bar': ", rr.Txt)
         t.Fatal()
     }
