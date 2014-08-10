@@ -46,32 +46,38 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     nodes = make([]*EtcdRecord, 0)
     findKeys = func(node *etcd.Node, ttl uint32, tryTtl bool) {
         if node.Dir == true {
-            var prevNode *etcd.Node
-            for _, nextNode := range node.Nodes {
-                if prevNode == nil {
-                    prevNode = nextNode
-                    continue
-                }
+            var lastValNode *etcd.Node
+            for _, node := range node.Nodes {
 
-                if strings.HasSuffix(nextNode.Key, ".ttl") {
-                    ttlValue, err := strconv.ParseUint(nextNode.Value, 10, 32)
+                if strings.HasSuffix(node.Key, ".ttl") {
+                    ttlValue, err := strconv.ParseUint(node.Value, 10, 32)
                     if err != nil {
-                        debugMsg("Unable to convert ttl value to int: ", nextNode.Value)
+                        debugMsg("Unable to convert ttl value to int: ", node.Value)
+                    } else if lastValNode == nil {
+                        debugMsg(".ttl node with no matching value node: ", node.Key)
                     } else {
-                        findKeys(prevNode, uint32(ttlValue), false)
-                        prevNode = nil
+                        findKeys(lastValNode, uint32(ttlValue), false)
+                        lastValNode = nil
                         continue
                     }
+                } else {
+                    if lastValNode != nil {
+                        findKeys(lastValNode, 0, false)
+                    }
+                    lastValNode = node
                 }
-
-                findKeys(prevNode, 0, false)
-                prevNode = nextNode
             }
 
-            if prevNode != nil {
-                findKeys(prevNode, 0, false)
+            if lastValNode != nil {
+                findKeys(lastValNode, 0, false)
             }
         } else {
+            // If for some reason this is passed a ttl node unexpectedly, bail
+            if strings.HasSuffix(node.Key, ".ttl") {
+                debugMsg("Unexpected .ttl node", node.Key)
+                return
+            }
+
             // If we don't have a TLL try and find one
             if tryTtl {
                 ttlKey := node.Key + ".ttl"
