@@ -16,6 +16,7 @@ import (
 type Resolver struct {
     etcd        *etcd.Client
     etcdPrefix  string
+    defaultTtl  uint32
 }
 
 type EtcdRecord struct {
@@ -62,14 +63,14 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
                     }
                 } else {
                     if lastValNode != nil {
-                        findKeys(lastValNode, 0, false)
+                        findKeys(lastValNode, r.defaultTtl, false)
                     }
                     lastValNode = node
                 }
             }
 
             if lastValNode != nil {
-                findKeys(lastValNode, 0, false)
+                findKeys(lastValNode, r.defaultTtl, false)
             }
         } else {
             // If for some reason this is passed a ttl node unexpectedly, bail
@@ -98,7 +99,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
         }
     }
 
-    findKeys(response.Node, 0, true)
+    findKeys(response.Node, r.defaultTtl, true)
 
     return
 }

@@ -14,6 +14,7 @@ type Server struct {
     etcd        *etcd.Client
     rTimeout    time.Duration
     wTimeout    time.Duration
+    defaultTtl  uint32
 }
 
 type Handler struct {
@@ -59,7 +60,7 @@ func (s *Server) Run() {
     udp_request_counter := metrics.NewCounter()
     metrics.Register("request.handler.udp.requests", udp_request_counter)
 
-    resolver := Resolver{etcd: s.etcd}
+    resolver := Resolver{etcd: s.etcd, defaultTtl: s.defaultTtl}
     tcpDNShandler := &Handler{
         resolver: &resolver,
         request_counter: tcp_request_counter,
