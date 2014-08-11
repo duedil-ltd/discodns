@@ -14,14 +14,11 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
     - Delegation via `NS` and `SOA` records
     - `SRV` and `PTR` for service discovery and reverse domain lookups
 - Multiple resource records of different types per domain (where valid)
-- Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
 - Support for wildcard domains
-
-#### Coming Soon
-
-- Support for configurable TTLs on a per-record basis (currently everything has a TTL of 0)
-- Support for zone transfers (`AXFR`), though enabling these would be on a short-lived basis
-- Better error handling ([see #10](https://github.com/duedil-ltd/discodns/issues/10))
+- Support for TTLs
+    - Global default on all records
+    - Individual TTL values for individual records
+- Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
 
 #### Production Readyness
 
@@ -195,6 +192,21 @@ Only a select few of record types are supported right now. These are listed here
 - `NS`
 - `PTR`
 - `SRV`
+
+### TTLs (Time To Live)
+
+You can configure discodns with a default TTL (the default default is `300` seconds) using the `--default-ttl` command line option. This means every single DNS resource record returned will have a TTL of the default value, unless otherwise specified on a per-record basis.
+
+To change the TTL of any given record, you can use the `.ttl` suffix. For example, to use a TTL of 60 minutes for the `discodns.net.` A record, the database might look like this...
+
+- `/net/discodns/.A -> 10.1.1.1`
+- `/net/discodns/.A.ttl -> 18000`
+
+If you have multiple nested records, you can still use the suffix. In this example, the record identified by `foo` will use the default TTL, and `bar` will use the specified TTL of 60 minutes.
+
+- `/net/discodns/.TXT/foo -> foo`
+- `/net/discodns/.TXT/bar -> bar`
+- `/net/discodns/.TXT/bar.ttl -> 18000`
 
 ### Value storage formats
 
