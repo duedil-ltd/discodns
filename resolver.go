@@ -18,11 +18,16 @@ type Resolver struct {
     etcdPrefix  string
 }
 
+type EtcdRecord struct {
+    node    *etcd.Node
+    ttl     uint32
+}
+
 // GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
 //  - File:         /foo/bar/.A -> "value"
 //  - Directory:    /foo/bar/.A/0 -> "value-0"
 //                  /foo/bar/.A/1 -> "value-1"
-func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
+func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
 
     counter := metrics.GetOrRegisterCounter("resolver.etcd.query_count", metrics.DefaultRegistry)
     error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
@@ -30,26 +35,70 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*etcd.Node, err error) {
     counter.Inc(1)
     debugMsg("Querying etcd for " + key)
 
-    response, err := r.etcd.Get(r.etcdPrefix + key, false, true)
+    response, err := r.etcd.Get(r.etcdPrefix + key, true, true)
     if err != nil {
         error_counter.Inc(1)
         return
     }
 
-    var findKeys func(node *etcd.Node)
+    var findKeys func(node *etcd.Node, ttl uint32, tryTtl bool)
 
-    nodes = make([]*etcd.Node, 0)
-    findKeys = func(node *etcd.Node) {
+    nodes = make([]*EtcdRecord, 0)
+    findKeys = func(node *etcd.Node, ttl uint32, tryTtl bool) {
         if node.Dir == true {
-            for _, subnode := range node.Nodes {
-                findKeys(subnode)
+            var lastValNode *etcd.Node
+            for _, node := range node.Nodes {
+
+                if strings.HasSuffix(node.Key, ".ttl") {
+                    ttlValue, err := strconv.ParseUint(node.Value, 10, 32)
+                    if err != nil {
+                        debugMsg("Unable to convert ttl value to int: ", node.Value)
+                    } else if lastValNode == nil {
+                        debugMsg(".ttl node with no matching value node: ", node.Key)
+                    } else {
+                        findKeys(lastValNode, uint32(ttlValue), false)
+                        lastValNode = nil
+                        continue
+                    }
+                } else {
+                    if lastValNode != nil {
+                        findKeys(lastValNode, 0, false)
+                    }
+                    lastValNode = node
+                }
+            }
+
+            if lastValNode != nil {
+                findKeys(lastValNode, 0, false)
             }
         } else {
-            nodes = append(nodes, node)
+            // If for some reason this is passed a ttl node unexpectedly, bail
+            if strings.HasSuffix(node.Key, ".ttl") {
+                debugMsg("Unexpected .ttl node", node.Key)
+                return
+            }
+
+            // If we don't have a TLL try and find one
+            if tryTtl {
+                ttlKey := node.Key + ".ttl"
+
+                debugMsg("Querying etcd for " + ttlKey)
+                response, err := r.etcd.Get(ttlKey, false, false)
+                if err == nil {
+                    ttlValue, err := strconv.ParseUint(response.Node.Value, 10, 32)
+                    if err != nil {
+                        debugMsg("Unable to convert ttl value to int: ", response.Node.Value)
+                    } else {
+                        ttl = uint32(ttlValue)
+                    }
+                }
+            }
+
+            nodes = append(nodes, &EtcdRecord{node, ttl})
         }
     }
 
-    findKeys(response.Node)
+    findKeys(response.Node, 0, true)
 
     return
 }
@@ -261,9 +310,8 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     answers = make([]dns.RR, len(nodes))
     for i, node := range nodes {
 
-        // TODO(tarnfeld): TTL 0 - make this configurable
-        header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: 0}
-        answer, err := converters[rrType](node, header)
+        header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: node.ttl}
+        answer, err := converters[rrType](node.node, header)
 
         if err != nil {
             debugMsg("Error converting type: ", err)
