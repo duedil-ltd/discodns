@@ -26,6 +26,7 @@ var (
         MetricsDuration     int         `short:"m" long:"metrics" description:"Dump metrics to stderr every N seconds" default:"30"`
         GraphiteServer      string      `long:"graphite" description:"Graphite server to send metrics to"`
         GraphiteDuration    int         `long:"graphite-duration" description:"Duration to periodically send metrics to the graphite server" default:"10"`
+        DefaultTtl          uint32      `short:"t" long:"default-ttl" description:"Default TTL to return on records without an explicit TTL" default:"300"`
     }
 )
 
@@ -81,7 +82,8 @@ func main() {
         port: Options.ListenPort,
         etcd: etcd,
         rTimeout: time.Duration(5) * time.Second,
-        wTimeout: time.Duration(5) * time.Second}
+        wTimeout: time.Duration(5) * time.Second,
+        defaultTtl: Options.DefaultTtl}
 
     server.Run()
 
