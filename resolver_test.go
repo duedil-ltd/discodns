@@ -518,9 +518,9 @@ func TestAnswerQuestionTTLMultipleRecords(t *testing.T) {
 }
 
 func TestAnswerQuestionTTLInvalidFormat(t *testing.T) {
-    resolver.etcdPrefix = "TestAnswerQuestionTTL/"
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A", "1.2.3.4", 0)
-    client.Set("TestAnswerQuestionTTL/net/disco/bar/.A.ttl", "haha", 0)
+    resolver.etcdPrefix = "TestAnswerQuestionTTLInvalidFormat/"
+    client.Set("TestAnswerQuestionTTLInvalidFormat/net/disco/bar/.A", "1.2.3.4", 0)
+    client.Set("TestAnswerQuestionTTLInvalidFormat/net/disco/bar/.A.ttl", "haha", 0)
 
     records, _ := resolver.LookupAnswersForType("bar.disco.net.", dns.TypeA)
 
