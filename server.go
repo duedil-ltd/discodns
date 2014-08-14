@@ -60,7 +60,14 @@ func (s *Server) Run() {
     udp_request_counter := metrics.NewCounter()
     metrics.Register("request.handler.udp.requests", udp_request_counter)
 
-    resolver := Resolver{etcd: s.etcd, defaultTtl: s.defaultTtl}
+    recordCache := MakeEtcdRecordCache(metrics.GetOrRegisterCounter("resolver.record_cache.hit", metrics.DefaultRegistry),
+                                       metrics.GetOrRegisterCounter("resolver.record_cache.miss", metrics.DefaultRegistry))
+
+    resolver := Resolver{
+        etcd: s.etcd,
+        defaultTtl: s.defaultTtl,
+        cache: &recordCache}
+
     tcpDNShandler := &Handler{
         resolver: &resolver,
         request_counter: tcp_request_counter,

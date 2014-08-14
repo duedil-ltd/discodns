@@ -2,6 +2,7 @@ package main
 
 import (
     "github.com/coreos/go-etcd/etcd"
+    "github.com/rcrowley/go-metrics"
     "github.com/miekg/dns"
     "testing"
     "strings"
@@ -9,7 +10,9 @@ import (
 
 var (
     client = etcd.NewClient([]string{"127.0.0.1:4001"})
-    resolver = &Resolver{etcd: client}
+    recordCache = MakeEtcdRecordCache(metrics.GetOrRegisterCounter("cache.hit", metrics.DefaultRegistry),
+                                      metrics.GetOrRegisterCounter("cache.miss", metrics.DefaultRegistry))
+    resolver = &Resolver{etcd: client, cache: &recordCache}
 )
 
 func TestEtcd(t *testing.T) {

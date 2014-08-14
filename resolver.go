@@ -15,6 +15,7 @@ import (
 
 type Resolver struct {
     etcd        *etcd.Client
+    cache       *EtcdRecordCache
     etcdPrefix  string
     defaultTtl  uint32
 }
