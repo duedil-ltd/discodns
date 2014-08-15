@@ -69,6 +69,8 @@ func (c *EtcdRecordCache) Set(key string, nodes []*EtcdRecord, ttl time.Duration
     pointer_uuid, _ := uuid.NewV4()
     pointer := pointer_uuid.String()
 
+    debugMsg("Cache Set: " + key + " [" + pointer + "]")
+
     // Insert the value
     c.cache.Lock()
     c.cache.m[pointer] = nodes
