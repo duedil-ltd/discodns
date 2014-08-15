@@ -46,3 +46,32 @@ func TestCacheMissExpiry(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestCacheExpiryOverlao(t *testing.T) {
+    nodes := make([]*EtcdRecord, 2)
+    cache.Set("cache.overlap", nodes, time.Second * 2)
+
+    _, hit := cache.Get("cache.overlap")
+    if hit != true {
+        t.Error("Expected cache hit")
+        t.Fatal()
+    }
+
+    cache.Set("cache.overlap", nodes, time.Second * 5)
+
+    <- time.After(time.Second * 3)
+
+    _, hit = cache.Get("cache.overlap")
+    if hit != true {
+        t.Error("Expected cache hit")
+        t.Fatal()
+    }
+
+    <- time.After(time.Second * 2)
+
+    _, hit = cache.Get("Cache.overlap")
+    if hit != false {
+        t.Error("Expected cache miss")
+        t.Fatal()
+    }
+}
