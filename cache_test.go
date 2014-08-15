@@ -67,7 +67,7 @@ func TestCacheExpiryOverlap(t *testing.T) {
         t.Fatal()
     }
 
-    <- time.After(time.Second * 2)
+    <- time.After(time.Second * 3)
 
     _, hit = cache.Get("Cache.overlap")
     if hit != false {
