@@ -47,7 +47,7 @@ func TestCacheMissExpiry(t *testing.T) {
     }
 }
 
-func TestCacheExpiryOverlao(t *testing.T) {
+func TestCacheExpiryOverlap(t *testing.T) {
     nodes := make([]*EtcdRecord, 2)
     cache.Set("cache.overlap", nodes, time.Second * 2)
 
