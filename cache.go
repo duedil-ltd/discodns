@@ -86,7 +86,9 @@ func (c *EtcdRecordCache) Set(key string, nodes []*EtcdRecord, ttl time.Duration
         debugMsg("Cache Expiry: " + key)
 
         c.values.Lock()
-        delete(c.values.m, key)
+        if c.values.m[key] == pointer {
+            delete(c.values.m, key)
+        }
         c.values.Unlock()
 
         debugMsg("Cache Cleanup: " + pointer)
