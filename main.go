@@ -4,6 +4,7 @@ import (
     "github.com/coreos/go-etcd/etcd"
     "github.com/jessevdk/go-flags"
     "github.com/rcrowley/go-metrics"
+    "github.com/miekg/dns"
     "log"
     "os"
     "os/signal"
@@ -27,6 +28,8 @@ var (
         GraphiteServer      string      `long:"graphite" description:"Graphite server to send metrics to"`
         GraphiteDuration    int         `long:"graphite-duration" description:"Duration to periodically send metrics to the graphite server" default:"10"`
         DefaultTtl          uint32      `short:"t" long:"default-ttl" description:"Default TTL to return on records without an explicit TTL" default:"300"`
+        Accept              []string    `long:"accept" description:"Limit DNS queries to a set of domain:[type,...] pairs" default:".:A,AAAA,CNAME,SRV,PTR,TXT,NS,SOA,ANY"`
+        Reject              []string    `long:"reject" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
     }
 )
 
@@ -83,7 +86,9 @@ func main() {
         etcd: etcd,
         rTimeout: time.Duration(5) * time.Second,
         wTimeout: time.Duration(5) * time.Second,
-        defaultTtl: Options.DefaultTtl}
+        defaultTtl: Options.DefaultTtl,
+        acceptFilters: parseFilters(Options.Accept),
+        rejectFilters: parseFilters(Options.Reject)}
 
     server.Run()
 
@@ -109,6 +114,24 @@ func debugMsg(v ...interface{}) {
 
         logger.Println(vars...)
     }
+}
+
+func parseFilters(filters []string) []QueryFilter {
+    parsedFilters := make([]QueryFilter, 0)
+    for _, filter := range filters {
+        components := strings.Split(filter, ":")
+        if len(components) != 2 {
+            logger.Printf("Expected domain:filters")
+            continue
+        }
+
+        domain := dns.Fqdn(components[0])
+        types := strings.Split(components[1], ",")
+
+        parsedFilters = append(parsedFilters, QueryFilter{domain, types})
+    }
+
+    return parsedFilters
 }
 
 func init() {
