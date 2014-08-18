@@ -6,33 +6,75 @@ import (
     "github.com/rcrowley/go-metrics"
     "strconv"
     "time"
+    "strings"
 )
 
+type QueryFilter struct {
+    domain          string
+    qTypes          []string
+}
+
 type Server struct {
-    addr        string
-    port        int
-    etcd        *etcd.Client
-    rTimeout    time.Duration
-    wTimeout    time.Duration
-    defaultTtl  uint32
+    addr            string
+    port            int
+    etcd            *etcd.Client
+    rTimeout        time.Duration
+    wTimeout        time.Duration
+    defaultTtl      uint32
+    acceptFilters   []QueryFilter
+    rejectFilters   []QueryFilter
 }
 
 type Handler struct {
-    resolver    *Resolver
+    resolver        *Resolver
+    acceptFilters    []QueryFilter
+    rejectFilters    []QueryFilter
 
     // Metrics
-    request_counter      metrics.Counter
-    response_timer       metrics.Timer
+    requestCounter      metrics.Counter
+    responseTimer       metrics.Timer
 }
 
 func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
-    h.request_counter.Inc(1)
-    h.response_timer.Time(func() {
+    h.requestCounter.Inc(1)
+    h.responseTimer.Time(func() {
         debugMsg("Handling incoming query for domain " + req.Question[0].Name)
+
+        // Figure out if the query matches any filters
+        accepted := true
+        for _, filter := range h.rejectFilters {
+            if filter.Matches(req) {
+                debugMsg("Rejected query")
+                accepted = false
+                break
+            }
+            debugMsg("Filter " + filter.domain + ":" + strings.Join(filter.qTypes, ",") + " not rejected")
+        }
+        if accepted {
+            for _, filter := range h.acceptFilters {
+                if !filter.Matches(req){
+                    debugMsg("Filter " + filter.domain + ":" + strings.Join(filter.qTypes, ",") + " not accepted")
+                    accepted = false
+                    break
+                }
+                debugMsg("Filter " + filter.domain + ":" + strings.Join(filter.qTypes, ",") + " accepted")
+            }
+        }
 
         // Lookup the dns record for the request
         // This method will add any answers to the message
-        msg := h.resolver.Lookup(req)
+        var msg *dns.Msg
+        if accepted != true {
+            debugMsg("Query not accepted")
+            msg =  new(dns.Msg)
+            msg.SetReply(req)
+            msg.SetRcode(req, dns.RcodeNameError)
+            msg.Authoritative = false
+            msg.RecursionAvailable = false
+        } else {
+            msg = h.resolver.Lookup(req)
+        }
+
         if msg != nil {
             err := response.WriteMsg(msg)
             if err != nil {
@@ -50,25 +92,29 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-    tcp_response_timer := metrics.NewTimer()
-    metrics.Register("request.handler.tcp.response_time", tcp_response_timer)
-    tcp_request_counter := metrics.NewCounter()
-    metrics.Register("request.handler.tcp.requests", tcp_request_counter)
+    tcpResponseTimer := metrics.NewTimer()
+    metrics.Register("request.handler.tcp.response_time", tcpResponseTimer)
+    tcpRequestCounter := metrics.NewCounter()
+    metrics.Register("request.handler.tcp.requests", tcpRequestCounter)
 
-    udp_response_timer := metrics.NewTimer()
-    metrics.Register("request.handler.udp.response_time", udp_response_timer)
-    udp_request_counter := metrics.NewCounter()
-    metrics.Register("request.handler.udp.requests", udp_request_counter)
+    udpResponseTimer := metrics.NewTimer()
+    metrics.Register("request.handler.udp.response_time", udpResponseTimer)
+    udpRequestCounter := metrics.NewCounter()
+    metrics.Register("request.handler.udp.requests", udpRequestCounter)
 
     resolver := Resolver{etcd: s.etcd, defaultTtl: s.defaultTtl}
     tcpDNShandler := &Handler{
         resolver: &resolver,
-        request_counter: tcp_request_counter,
-        response_timer: tcp_response_timer}
+        requestCounter: tcpRequestCounter,
+        responseTimer: tcpResponseTimer,
+        acceptFilters: s.acceptFilters,
+        rejectFilters: s.rejectFilters}
     udpDNShandler := &Handler{
         resolver: &resolver,
-        request_counter: udp_request_counter,
-        response_timer: udp_response_timer}
+        requestCounter: udpRequestCounter,
+        responseTimer: udpResponseTimer,
+        acceptFilters: s.acceptFilters,
+        rejectFilters: s.rejectFilters}
 
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()
@@ -98,4 +144,21 @@ func (s *Server) start(ds *dns.Server) {
     if err != nil {
         logger.Fatalf("Start %s listener on %s failed:%s", ds.Net, s.Addr(), err.Error())
     }
+}
+
+func (f *QueryFilter) Matches(req *dns.Msg) bool {
+    queryDomain := req.Question[0].Name
+    queryQType := dns.TypeToString[req.Question[0].Qtype]
+    if !strings.HasSuffix(queryDomain, f.domain) {
+        return false
+    }
+
+    matches := false
+    for _, qType := range f.qTypes {
+        if qType == queryQType {
+            matches = true
+        }
+    }
+
+    return matches
 }
