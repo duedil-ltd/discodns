@@ -53,15 +53,16 @@ func (f *QueryFilterer) ShouldAcceptQuery(req *dns.Msg) bool {
         debugMsg(filterDescription + " not rejected")
     }
 
-    if accepted {
+    if accepted && len(f.acceptFilters) > 0 {
+        accepted = false
         for _, filter := range f.acceptFilters {
             filterDescription := "Filter " + filter.domain + ":" + strings.Join(filter.qTypes, ",")
-            if !filter.Matches(req){
-                debugMsg(filterDescription + " not accepted")
-                accepted = false
+            if filter.Matches(req) {
+                debugMsg(filterDescription + " accepted")
+                accepted = true
                 break
             }
-            debugMsg(filterDescription + " accepted")
+            debugMsg(filterDescription + " not accepted")
         }
     }
 
