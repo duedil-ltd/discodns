@@ -19,6 +19,7 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
     - Global default on all records
     - Individual TTL values for individual records
 - Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
+- Incoming query filters
 
 #### Production Readyness
 
@@ -253,6 +254,20 @@ For more about the Priority and Weight fields, including the algorithm to use wh
 The discodns server will monitor a wide range of runtime and application metrics. By default these metrics are dumped to stderr every 30 seconds, but this can be configured using the `-metrics` argument, set to `0` to disable completely.
 
 You can also use the `-graphite` arguments for shipping metrics to your own Graphite server instead.
+
+## Query Filters
+
+In some situations, it can be useful to restrict the activities of a discodns nameserver to avoid querying etcd for certain domains or record types. For example, your network may not have support for IPv6 and therefore will never be storing any internal `AAAA` records, so it's a waste of effort querying etcd as they're never going to return with values.
+
+This can be achieved with the `--accept` and `--reject` options to discodns. With these options, queries will be tested against the acceptance criteria before hitting etcd, or the internal resolver. This is a very cheap operation, and can drastically improve performance in some cases.
+
+For example, if I **only** want to allow PTR lookups in the `in-addr.arpa.` domain space (for reverse domain queries) I can use the `--accept="in-addr.arpa:PTR"` argument. The nameserver is now going to reject any queries that aren't reverse lookups.
+
+```
+--accept="discodns.net:" # Accept any queries within the discodns.net domain
+--accept="discodns.net:SRV,PTR" # Accept only PTR and SRV queries within the discodns domain
+--reject="discodns.net:AAAA" # Reject any queries within the discodns.net domain that are for IPv6 lookups
+```
 
 ## Contributions
 
