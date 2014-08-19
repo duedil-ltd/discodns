@@ -23,9 +23,7 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 
 #### Production Readyness
 
-Can I use this in production? TLDR; Yes, with caution.
-
-We've been running discodns in some production environments with little issue, though that is not to say it's bug free! If you find any issues, please submit a [bug report](https://github.com/duedil-ltd/discodns/issues/new) or pull request.
+We've been running discodns in production for several months now, with no issue, though that is not to say it's bug free! If you find any issues, please submit a [bug report](https://github.com/duedil-ltd/discodns/issues/new) or pull request.
 
 ### Why did we build discodns?
 
