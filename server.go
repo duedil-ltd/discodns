@@ -9,30 +9,55 @@ import (
 )
 
 type Server struct {
-    addr        string
-    port        int
-    etcd        *etcd.Client
-    rTimeout    time.Duration
-    wTimeout    time.Duration
-    defaultTtl  uint32
+    addr            string
+    port            int
+    etcd            *etcd.Client
+    rTimeout        time.Duration
+    wTimeout        time.Duration
+    defaultTtl      uint32
+    queryFilterer   *QueryFilterer
 }
 
 type Handler struct {
-    resolver    *Resolver
+    resolver        *Resolver
+    queryFilterer   *QueryFilterer
 
     // Metrics
-    request_counter      metrics.Counter
-    response_timer       metrics.Timer
+    requestCounter      metrics.Counter
+    acceptCounter       metrics.Counter
+    rejectCounter       metrics.Counter
+    responseTimer       metrics.Timer
 }
 
 func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
-    h.request_counter.Inc(1)
-    h.response_timer.Time(func() {
+    h.requestCounter.Inc(1)
+    h.responseTimer.Time(func() {
         debugMsg("Handling incoming query for domain " + req.Question[0].Name)
 
         // Lookup the dns record for the request
         // This method will add any answers to the message
-        msg := h.resolver.Lookup(req)
+        var msg *dns.Msg
+        if h.queryFilterer.ShouldAcceptQuery(req) != true {
+            debugMsg("Query not accepted")
+
+            h.rejectCounter.Inc(1)
+
+            msg =  new(dns.Msg)
+            msg.SetReply(req)
+            msg.SetRcode(req, dns.RcodeNameError)
+            msg.Authoritative = true
+            msg.RecursionAvailable = false
+
+            // Add a useful TXT record
+            header := dns.RR_Header{Name: req.Question[0].Name,
+                                    Class: dns.ClassINET,
+                                    Rrtype: dns.TypeTXT}
+            msg.Ns = []dns.RR{&dns.TXT{header, []string{"Rejected query based on matched filters"}}}
+        } else {
+            h.acceptCounter.Inc(1)
+            msg = h.resolver.Lookup(req)
+        }
+
         if msg != nil {
             err := response.WriteMsg(msg)
             if err != nil {
@@ -50,25 +75,39 @@ func (s *Server) Addr() string {
 
 func (s *Server) Run() {
 
-    tcp_response_timer := metrics.NewTimer()
-    metrics.Register("request.handler.tcp.response_time", tcp_response_timer)
-    tcp_request_counter := metrics.NewCounter()
-    metrics.Register("request.handler.tcp.requests", tcp_request_counter)
+    tcpResponseTimer := metrics.NewTimer()
+    metrics.Register("request.handler.tcp.response_time", tcpResponseTimer)
+    tcpRequestCounter := metrics.NewCounter()
+    metrics.Register("request.handler.tcp.requests", tcpRequestCounter)
+    tcpAcceptCounter := metrics.NewCounter()
+    metrics.Register("request.handler.tcp.filter_accepts", tcpAcceptCounter)
+    tcpRejectCounter := metrics.NewCounter()
+    metrics.Register("request.handler.tcp.filter_rejects", tcpRejectCounter)
 
-    udp_response_timer := metrics.NewTimer()
-    metrics.Register("request.handler.udp.response_time", udp_response_timer)
-    udp_request_counter := metrics.NewCounter()
-    metrics.Register("request.handler.udp.requests", udp_request_counter)
+    udpResponseTimer := metrics.NewTimer()
+    metrics.Register("request.handler.udp.response_time", udpResponseTimer)
+    udpRequestCounter := metrics.NewCounter()
+    metrics.Register("request.handler.udp.requests", udpRequestCounter)
+    udpAcceptCounter := metrics.NewCounter()
+    metrics.Register("request.handler.udp.filter_accepts", udpAcceptCounter)
+    udpRejectCounter := metrics.NewCounter()
+    metrics.Register("request.handler.udp.filter_rejects", udpRejectCounter)
 
     resolver := Resolver{etcd: s.etcd, defaultTtl: s.defaultTtl}
     tcpDNShandler := &Handler{
         resolver: &resolver,
-        request_counter: tcp_request_counter,
-        response_timer: tcp_response_timer}
+        requestCounter: tcpRequestCounter,
+        acceptCounter: tcpAcceptCounter,
+        rejectCounter: tcpRejectCounter,
+        responseTimer: tcpResponseTimer,
+        queryFilterer: s.queryFilterer}
     udpDNShandler := &Handler{
         resolver: &resolver,
-        request_counter: udp_request_counter,
-        response_timer: udp_response_timer}
+        requestCounter: udpRequestCounter,
+        acceptCounter: udpAcceptCounter,
+        rejectCounter: udpRejectCounter,
+        responseTimer: udpResponseTimer,
+        queryFilterer: s.queryFilterer}
 
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()
