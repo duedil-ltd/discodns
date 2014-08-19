@@ -20,6 +20,7 @@ func (f *QueryFilter) Matches(req *dns.Msg) bool {
     queryDomain := req.Question[0].Name
     queryQType := dns.TypeToString[req.Question[0].Qtype]
     if len(queryDomain) > 0 && !strings.HasSuffix(queryDomain, f.domain) {
+        debugMsg("Domain match failed (" + queryDomain + ", " + f.domain + ")")
         return false
     }
 
