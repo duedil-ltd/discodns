@@ -1,7 +1,6 @@
 package main
 
 import (
-    "bytes"
     "fmt"
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
@@ -246,7 +245,7 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
 
         for rrType, _ := range converters {
             go func(rrType uint16) {
-                defer func() { recover() }()
+                defer recover()
                 defer wg.Done()
 
                 results, err := r.LookupAnswersForType(q.Name, rrType)
@@ -323,23 +322,6 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     }
 
     return
-}
-
-// nameToKey returns a string representing the etcd version of a domain, replacing dots with slashes
-// and reversing it (foo.net. -> /net/foo)
-func nameToKey(name string, suffix string) string {
-    segments := strings.Split(name, ".")
-
-    var keyBuffer bytes.Buffer
-    for i := len(segments) - 1; i >= 0; i-- {
-        if len(segments[i]) > 0 {
-            keyBuffer.WriteString("/")
-            keyBuffer.WriteString(segments[i])
-        }
-    }
-
-    keyBuffer.WriteString(suffix)
-    return keyBuffer.String()
 }
 
 // Map of conversion functions that turn individual etcd nodes into dns.RR answers

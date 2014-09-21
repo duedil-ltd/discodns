@@ -30,6 +30,7 @@ var (
         DefaultTtl          uint32      `short:"t" long:"default-ttl" description:"Default TTL to return on records without an explicit TTL" default:"300"`
         Accept              []string    `long:"accept" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
         Reject              []string    `long:"reject" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
+        TsigSecret          []string    `short:"s" long:"tsig" description:"Transaction signature secret in the format name:secret"`
     }
 )
 
@@ -79,6 +80,17 @@ func main() {
         logger.Printf("Metric logging disabled")
     }
 
+    // Parse the tsig arguments
+    tsigSecret := map[string]string{}
+    for _, arg := range Options.TsigSecret {
+        components := strings.SplitN(arg, ":", 2)
+        if len(components) != 2 {
+            logger.Printf("Failed to parse TSIG argument")
+            continue
+        }
+        tsigSecret[dns.Fqdn(components[0])] = components[1]
+    }
+
     // Start up the DNS resolver server
     server := &Server{
         addr: Options.ListenAddress,
@@ -87,6 +99,7 @@ func main() {
         rTimeout: time.Duration(5) * time.Second,
         wTimeout: time.Duration(5) * time.Second,
         defaultTtl: Options.DefaultTtl,
+        tsigSecret: tsigSecret,
         queryFilterer: &QueryFilterer{acceptFilters: parseFilters(Options.Accept),
                                       rejectFilters: parseFilters(Options.Reject)}}
 
