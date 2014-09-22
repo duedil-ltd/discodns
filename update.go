@@ -9,27 +9,34 @@ import (
 type DynamicUpdateManager struct {
     etcd        *etcd.Client
     etcdPrefix  string
+    resolver    *Resolver
 }
 
+// Update will perform the necessary logic to update the DNS database with
+// the changes described in the RFC-2136 formatted DNS message given.
+// The return value will be the response message to send back to the client.
+// It is assumed at this level the client has already authenticated and proven
+// their right to update records in the given zone.
 func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) {
+    
+    rrsets := []dns.RR{req.Answer, req.Ns}
     msg = new(dns.Msg)
     msg.SetReply(req)
 
-    // Verify the updates are within the zone
-    for _, rr := range req.Answer {
-        if dns.CompareDomainName(rr.Header().Name, zone) != dns.CountLabel(zone) {
-            msg.SetRcode(req, dns.RcodeNotZone)
-            return msg
-        }
-    }
-    for _, rr := range req.Ns {
-        if dns.CompareDomainName(rr.Header().Name, zone) != dns.CountLabel(zone) {
-            msg.SetRcode(req, dns.RcodeNotZone)
-            return msg
+    // Verify the updates are within the zone we're modifying, since cross
+    // zone updates are invalid.
+    for _, rrs := range rrsets {
+        for _, rr := range rrs {
+            if dns.CompareDomainName(rr.Header().Name, zone) != dns.CountLabel(zone) {
+                debugMsg("Domain " + rr.Header().Name + " is not in the " + zone + " zone")
+                msg.SetRcode(req, dns.RcodeNotZone)
+                return
+            }
         }
     }
 
-    // Ensure we recover from any panic to help ensure we unlock the locked domains
+    // Ensure we recover from any panicking goroutine, this helps ensure we don't
+    // leave any acquired locks around if possible
     defer func() {
         if r := recover(); r != nil {
             debugMsg("[PANIC] " + fmt.Sprint(r))
@@ -40,34 +47,35 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // Attempt to acquire a lock on all of the domains referenced in the update
     // If any lock attempt fails, all acquired locks will be released and no
     // update will be applied.
-    for _, rr := range req.Answer {
-        lock := lockDomain(u.etcd, rr.Header().Name)
-        defer lock.Unlock()
-    }
-    for _, rr := range req.Ns {
-        lock := lockDomain(u.etcd, rr.Header().Name)
-        defer lock.Unlock()
+    for _, rrs := range rrsets {
+        for _, rr := range rrs {
+            lock := lockDomain(u.etcd, rr.Header().Name)
+            defer lock.Unlock()
+        }
     }
 
-    // Validate the prerequisites of the update request
-    validationStatus := validatePrerequisites(req.Answer)
-    msg.SetRcode(req, validationStatus)
-
-    // If we failed to validate prerequisites, return the error
+    // Validate the prerequisites of the update, returning immediately if they
+    // are not satisfied.
+    validationStatus := validatePrerequisites(req.Answer, u.resolver)
     if validationStatus != dns.RcodeSuccess {
-        return msg
+        msg.SetRcode(req, validationStatus)
+        return    
     }
 
     // Perform the updates to the domain name system
+    // This is not inside any kind of transaction, so a failure here *can*
+    // result in a partially updated zone.
+    // TODO(tarnfeld): Figure out a way of rolling back changes, perhaps make
+    // use of the etcd indexes?
     msg.SetRcode(req, performUpdate(req.Ns))
 
     return
 }
 
 // validatePrerequisites will perform all necessary validation checks against
-// update prerequisites and return the relevent status is validation fails,
+// update prerequisites and return the relevant status is validation fails,
 // otherwise NOERROR(0) will be returned.
-func validatePrerequisites(rr []dns.RR) (rcode int) {
+func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
     for _, record := range rr {
         header := record.Header()
         if header.Ttl != 0 {
@@ -77,23 +85,46 @@ func validatePrerequisites(rr []dns.RR) (rcode int) {
         if header.Class == dns.ClassANY {
             if header.Rdlength != 0 {
                 return dns.RcodeFormatError
-            }
-            if header.Rrtype == dns.TypeANY {
-                // TODO (dns.TypeANY, header.Name) dns.RcodeNameError
+            } else if header.Rrtype == dns.TypeANY {
+                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY); len(answers) > 0 {
+                    if ok != nil {
+                        return dns.RcodeServerFailure
+                    }
+                    return dns.RcodeNameError
+                }
             } else {
-                // TODO (header.Rrtype, header.Name) dns.RcodeNXRrset
+                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) > 0 {
+                    if ok != nil {
+                        return dns.RcodeServerFailure
+                    }
+                    return dns.RcodeNXRrset
+                }
             }
         } else if header.Class == dns.ClassNone {
             if header.Rdlength != 0 {
                 return dns.RcodeFormatError
-            }
-            if header.Rrtype == dns.TypeANY {
-                // TODO (dns.TypeANY, header.Name) dns.RcodeYXDomain
+            } else if header.Rrtype == dns.TypeANY {
+                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY)); len(answers) == 0 {
+                    if ok != nil {
+                        return dns.RcodeServerFailure
+                    }
+                    return dns.RcodeYXDomain
+                }
             } else {
-                // TODO (header.Rrtype, header.Name) dns.RcodeYXRrset
+                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype)); len(answers) == 0 {
+                    if ok != nil {
+                        return dns.RcodeServerFailure
+                    }
+                    return dns.RcodeYXRrset
+                }
             }
         } else if header.Class == dns.ClassINET {
-            // Compare rr with the same type+name in the db (value comparison)
+            if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
+                if ok != nil {
+                    return dns.RcodeServerFailure
+                }
+                return false // TODO(tarnfekd): What error type should this be?
+            }
         } else {
             return dns.RcodeFormatError
         }
@@ -109,59 +140,14 @@ func performUpdate(rr []dns.RR) (rcode int) {
     return dns.RcodeSuccess
 }
 
-type DomainLock struct {
-    etcd        *etcd.Client
-    domain      string
-    index       uint64
-    lockPath    string
-    lockExpiry  uint64
+// nameInUser will return true if the name in the dns.RR_Header given is
+// already in use, or false if not.
+func nameInUse(header dns.RR_Header) []dns.RR {
+    return false
 }
 
-func (l *DomainLock) Unlock() error {
-    debugMsg("Unlocking " + l.domain + " from " + l.lockPath)
-
-    _, err := l.etcd.CompareAndDelete(l.lockPath, "", l.index)
-    if err != nil {
-        debugMsg(err)
-    }
-
-    return err
-}
-
-func (l *DomainLock) Lock() error {
-    if l.index > 0 || l.lockPath != "" {
-        return nil
-    }
-
-    l.lockPath = nameToKey(l.domain, "/._UPDATE_LOCK")
-    debugMsg("Locking " + l.domain + " at " + l.lockPath)
-
-    response, err := l.etcd.Create(l.lockPath, "", l.lockExpiry)
-    if err != nil {
-        panic("Failed to acquire lock on domain " + l.domain)
-    }
-
-    l.index = response.Node.CreatedIndex
-    return err
-}
-
-// IsLocked will return true if 
-func (l *DomainLock) IsLocked() (locked bool) {
-    locked = false
-
-    // Verify that the domain is locked and that it's *our* lock
-    if l.lockPath != "" {
-        response, err := l.etcd.Get(l.lockPath, false, false)
-        if err == nil {
-            locked = response.Node.CreatedIndex == l.index
-        }
-    }
-
-    return
-}
-
-func lockDomain(etcd *etcd.Client, domain string) (lock *DomainLock) {
-    lock = &DomainLock{etcd: etcd, domain: domain, lockExpiry: 30}
-    defer lock.Lock()
-    return lock
+// nameInUser will return true if the name AND type in the dns.RR_Header given
+// is are already in use.
+func nameAndTypeInUse(header dns.RR_Header) bool {
+    return false
 }

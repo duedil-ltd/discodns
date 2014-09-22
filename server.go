@@ -129,7 +129,7 @@ func (s *Server) Run() {
     metrics.Register("request.handler.udp.filter_rejects", udpRejectCounter)
 
     resolver := Resolver{etcd: s.etcd, defaultTtl: s.defaultTtl}
-    updateManager := DynamicUpdateManager{etcd: s.etcd}
+    updateManager := DynamicUpdateManager{etcd: s.etcd, resolver: &resolver}
     tcpDNShandler := &Handler{
         resolver: &resolver,
         requestCounter: tcpRequestCounter,
