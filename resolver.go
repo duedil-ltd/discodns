@@ -1,11 +1,9 @@
 package main
 
 import (
-    "fmt"
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
     "github.com/rcrowley/go-metrics"
-    "net"
     "strconv"
     "strings"
     "sync"

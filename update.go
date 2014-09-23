@@ -19,7 +19,7 @@ type DynamicUpdateManager struct {
 // their right to update records in the given zone.
 func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) {
     
-    rrsets := []dns.RR{req.Answer, req.Ns}
+    rrsets := [][]dns.RR{req.Answer, req.Ns}
     msg = new(dns.Msg)
     msg.SetReply(req)
 
@@ -50,7 +50,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     for _, rrs := range rrsets {
         for _, rr := range rrs {
             lock := lockDomain(u.etcd, rr.Header().Name)
-            defer lock.Unlock()
+            defer lock.Unlock(true)
         }
     }
 
@@ -100,18 +100,18 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     return dns.RcodeNXRrset
                 }
             }
-        } else if header.Class == dns.ClassNone {
+        } else if header.Class == dns.ClassNONE {
             if header.Rdlength != 0 {
                 return dns.RcodeFormatError
             } else if header.Rrtype == dns.TypeANY {
-                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY)); len(answers) == 0 {
+                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY); len(answers) == 0 {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
                     return dns.RcodeYXDomain
                 }
             } else {
-                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype)); len(answers) == 0 {
+                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) == 0 {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
@@ -119,12 +119,11 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                 }
             }
         } else if header.Class == dns.ClassINET {
-            if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
-                if ok != nil {
-                    return dns.RcodeServerFailure
-                }
-                return false // TODO(tarnfekd): What error type should this be?
-            }
+            // if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
+            //     if ok != nil {
+            //         return dns.RcodeServerFailure
+            //     }
+            // }
         } else {
             return dns.RcodeFormatError
         }
@@ -143,7 +142,7 @@ func performUpdate(rr []dns.RR) (rcode int) {
 // nameInUser will return true if the name in the dns.RR_Header given is
 // already in use, or false if not.
 func nameInUse(header dns.RR_Header) []dns.RR {
-    return false
+    return nil
 }
 
 // nameInUser will return true if the name AND type in the dns.RR_Header given

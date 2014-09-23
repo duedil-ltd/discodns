@@ -5,6 +5,9 @@ import (
     "github.com/miekg/dns"
     "bytes"
     "strings"
+    "fmt"
+    "strconv"
+    "net"
 )
 
 type EtcdRecord struct {
@@ -14,14 +17,14 @@ type EtcdRecord struct {
 
 // convertNodeToRR will convert an etcd node with a raw value into a dns.RR
 // record, returning an error if the conversion fails
-func convertNodeToRR(node *etd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+func convertNodeToRR(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
     return convertersToRR[header.Rrtype](node, header)
 }
 
 // convertRRToNode will convert a DNS RR and it's type specific values to an
 // etcd node with a raw value and key path, returning an error if the conversion
 // fails
-func convertRRToNode(rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+func convertRRToNode(rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     return convertersFromRR[header.Rrtype](rr, header)
 }
 
@@ -196,37 +199,37 @@ var convertersToRR = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr
 }
 
 // Map of conversion functions that turn dns.RR answers into individual etcd nodes
-var convertersFromRR = map[uint16]func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+var convertersFromRR = map[uint16]func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
 
-    dns.TypeA: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeA: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeAAAA: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeAAAA: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeTXT: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeTXT: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeCNAME: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeCNAME: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeNS: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeNS: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypePTR: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypePTR: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeSRV: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeSRV: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 
-    dns.TypeSOA: func (rr *dns.RR, header dns.RR_Header) (node etcd.Node, err error) {
+    dns.TypeSOA: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
         return nil, nil
     },
 }
