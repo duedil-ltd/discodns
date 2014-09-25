@@ -140,7 +140,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     errors := make(chan error)
 
     if q.Qclass == dns.ClassINET {
-        r.AnswerQuestion(answers, errors, q, &wait)
+        r.AnswerQuestion(answers, errors, q, &wait, true)
     }
 
     // Spawn a goroutine to close the channel as soon as all of the things
@@ -161,7 +161,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
                         Qtype: q.Qtype,
                         Qclass: q.Qclass}
 
-                    r.AnswerQuestion(answers, errors, question, &wait)
+                    r.AnswerQuestion(answers, errors, question, &wait, true)
 
                     wait.Wait()
                     if len(answers) > 0 {
@@ -225,7 +225,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 // the way. The function will return immediately, and spawn off a bunch of goroutines
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
-func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup) {
+func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup, resolveAliases boolean) {
 
     typeStr := strings.ToLower(dns.TypeToString[q.Qtype])
     type_counter := metrics.GetOrRegisterCounter("resolver.answers.type." + typeStr, metrics.DefaultRegistry)
@@ -265,7 +265,7 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
                     for _, rr := range records {
                         answers <- rr
                     }
-                } else {
+                } else if resolveAliases {
                     cnames, err := r.LookupAnswersForType(q.Name, dns.TypeCNAME)
                     if err != nil {
                         errors <- err
