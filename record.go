@@ -34,10 +34,16 @@ func nameToKey(name string, suffix string) string {
     segments := strings.Split(name, ".")
 
     var keyBuffer bytes.Buffer
+    var writtenSegment bool
     for i := len(segments) - 1; i >= 0; i-- {
         if len(segments[i]) > 0 {
-            keyBuffer.WriteString("/")
+            // We never want to write a leading slash
+            if writtenSegment {
+                keyBuffer.WriteString("/")
+            }
+
             keyBuffer.WriteString(segments[i])
+            writtenSegment = true
         }
     }
 

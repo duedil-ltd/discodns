@@ -26,7 +26,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
 
     counter.Inc(1)
-    debugMsg("Querying etcd for " + key)
+    debugMsg("Querying etcd for /" + r.etcdPrefix + key)
 
     response, err := r.etcd.Get(r.etcdPrefix + key, true, true)
     if err != nil {

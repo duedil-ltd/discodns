@@ -80,25 +80,6 @@ func TestGetFromStorageNestedKeys(t *testing.T) {
     }
 }
 
-func TestNameToKeyConverter(t *testing.T) {
-    var key string
-
-    key = nameToKey("foo.net.", "")
-    if key != "/net/foo" {
-        t.Error("Expected key /net/foo")
-    }
-
-    key = nameToKey("foo.net", "")
-    if key != "/net/foo" {
-        t.Error("Expected key /net/foo")
-    }
-
-    key = nameToKey("foo.net.", "/.A")
-    if key != "/net/foo/.A" {
-        t.Error("Expected key /net/foo/.A")
-    }
-}
-
 /**
  * Test that the right authority is being returned for different types of DNS
  * queries.
