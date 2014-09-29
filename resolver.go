@@ -225,7 +225,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 // the way. The function will return immediately, and spawn off a bunch of goroutines
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
-func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup, resolveAliases boolean) {
+func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup, resolveAliases bool) {
 
     typeStr := strings.ToLower(dns.TypeToString[q.Qtype])
     type_counter := metrics.GetOrRegisterCounter("resolver.answers.type." + typeStr, metrics.DefaultRegistry)
