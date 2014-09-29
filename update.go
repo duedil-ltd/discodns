@@ -58,6 +58,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // are not satisfied.
     validationStatus := validatePrerequisites(req.Answer, u.resolver)
     if validationStatus != dns.RcodeSuccess {
+        debugMsg("Validation of prerequisites failed")
         msg.SetRcode(req, validationStatus)
         return    
     }
@@ -90,6 +91,7 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                    debugMsg("Domain that should exist does not ", header.Name)
                     return dns.RcodeNameError
                 }
             } else {
@@ -97,6 +99,7 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                    debugMsg("RRset that should exist does not ", header.Name)
                     return dns.RcodeNXRrset
                 }
             }
@@ -108,6 +111,7 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                    debugMsg("Domain that should not exist does ", header.Name)
                     return dns.RcodeYXDomain
                 }
             } else {
@@ -115,10 +119,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                    debugMsg("RRset that should not exist does ", header.Name)
                     return dns.RcodeYXRrset
                 }
             }
         } else if header.Class == dns.ClassINET {
+            // TODO(tarnfeld): Perform strict comparisons between the resource records
             // if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
             //     if ok != nil {
             //         return dns.RcodeServerFailure
