@@ -881,3 +881,75 @@ func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
         }
     }
 }
+
+func TestNameExistsDoesExist(t *testing.T) {
+
+    resolver.etcdPrefix = "TestNameExistsDoesExist/"
+    client.Set("TestNameExistsDoesExist/net/disco/bar/.A", "127.0.0.1", 0)
+
+    exists, err := resolver.NameExists("bar.disco.net")
+    if exists != true {
+        t.Error("Expected domain to exist (true), got (false)")
+        t.Fatal()
+    }
+
+    if err != nil {
+        t.Error("Expected error to be nil")
+        t.Fatal()
+    }
+}
+
+func TestNameExistsDoesNotExist(t *testing.T) {
+
+    resolver.etcdPrefix = "TestNameExistsDoesNotExist/"
+    exists, err := resolver.NameExists("bar.disco.net")
+    if exists != false {
+        t.Error("Expected domain to not exist (false), got (true)")
+        t.Fatal()
+    }
+
+    if err != nil {
+        t.Error("Expected error to be nil")
+        t.Fatal()
+    }
+}
+
+func TestRRSetExistsDoesExist(t *testing.T) {
+
+    resolver.etcdPrefix = "TestRRSetExistsDoesExist/"
+    client.Set("TestRRSetExistsDoesExist/net/disco/bar/.A", "127.0.0.1", 0)
+
+    exists, err := resolver.RRSetExists("bar.disco.net", dns.TypeA)
+    if exists != true {
+        t.Error("Expected RRset to exist (true), got (false)")
+        t.Fatal()
+    }
+
+    if err != nil {
+        t.Error("Expected error to be nil")
+        t.Fatal()
+    }
+}
+
+func TestRRSetExistsDoesNotExist(t *testing.T) {
+
+    resolver.etcdPrefix = "TestRRSetExistsDoesNotExist/"
+    exists, err := resolver.RRSetExists("bar.disco.net", dns.TypeA)
+    if exists != false {
+        t.Error("Expected RRset to not exist (false), got (true)")
+        t.Fatal()
+    }
+
+    if err != nil {
+        t.Error("Expected error to be nil")
+        t.Fatal()
+    }
+}
+
+func TestMatchRRMatches(t *testing.T) {
+
+}
+
+func TestMatchRRDoesNotMatch(t *testing.T) {
+
+}

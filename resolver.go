@@ -316,3 +316,47 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
 
     return
 }
+
+// NameExists will return true if the given domain name exists and has any
+// resource records in the database. If an error occurs while querying for
+// data the function will return false and an error.
+func (r *Resolver) NameExists(name string) (exists bool, err error) {
+    wg := sync.WaitGroup{}
+    answers := make(chan dns.RR)
+    errors := make(chan error)
+
+    question := dns.Question{dns.Fqdn(name), dns.TypeANY, dns.ClassINET}
+    r.AnswerQuestion(answers, errors, question, &wg, true)
+
+    go func() {
+        wg.Wait()
+        close(answers)
+        close(errors)
+    }()
+
+    select {
+        case _, ok := <-answers:
+            if ok {
+                return true, nil
+            }
+        case err, ok := <-errors:
+            if ok {
+                return false, err
+            }
+    }
+
+    return false, nil
+}
+
+func (r *Resolver) RRSetExists(name string, rrType uint16) (exists bool, err error) {
+    answers, err := r.LookupAnswersForType(dns.Fqdn(name), rrType)
+    if err != nil {
+        return false, err
+    }
+
+    return len(answers) > 0, nil
+}
+
+func (r *Resolver) MatchRR(rr dns.RR) (matches, exists bool, err error) {
+    return false, false, nil
+}
