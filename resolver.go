@@ -190,6 +190,8 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
     // Collect up all of the answers and any errors
     done := 0
+    errors_count := 0
+
     for done < 2 {
         select {
         case rr, ok := <-answers:
@@ -201,18 +203,19 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
             }
         case err, ok := <-errors:
             if ok {
-                error_counter.Inc(1)
                 // TODO(tarnfeld): Send special TXT records with a server error response code
-                debugMsg("Error")
-                debugMsg(err)
+                debugMsg("Caught error ", err)
+                errors_count++
             } else {
                 done++
             }
         }
     }
 
-    // Send the correct authority records
-    if len(msg.Answer) == 0 {
+    if errors_count > 0 {
+        error_counter.Inc(1)
+        msg.SetRcode(req, dns.RcodeServerFailure)
+    } else if len(msg.Answer) == 0 {
         soa := r.Authority(q.Name)
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
