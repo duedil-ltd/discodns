@@ -882,6 +882,31 @@ func TestLookupAnswerForSRVInvalidValues(t *testing.T) {
     }
 }
 
+func TestLookupFailure(t *testing.T) {
+    // Cause an error to be thrown, this is bad escaping.
+    resolver.etcdPrefix = "TestLookup%%%Failure/"
+
+    query := new(dns.Msg)
+    query.SetQuestion("bar.disoo.net.", dns.TypeANY)
+
+    answer := resolver.Lookup(query)
+
+    if (answer.Rcode != dns.RcodeServerFailure) {
+        t.Error("Expected SERVFAIL")
+        t.Fatal()
+    }
+
+    if len(answer.Answer) > 0 {
+        t.Error("Didn't expect any answer records")
+        t.Fatal()
+    }
+
+    if len(answer.Ns) > 0 {
+        t.Error("Didn't expect any authority records")
+        t.Fatal()
+    }
+}
+
 func TestNameExistsDoesExist(t *testing.T) {
 
     resolver.etcdPrefix = "TestNameExistsDoesExist/"

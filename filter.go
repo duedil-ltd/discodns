@@ -87,6 +87,10 @@ func parseFilters(filters []string) []QueryFilter {
         domain := dns.Fqdn(components[0])
         types := strings.Split(components[1], ",")
 
+        if len(types) == 1 && len(types[0]) == 0 {
+            types = make([]string, 0)
+        }
+
         debugMsg("Adding filter with domain '" + domain + "' and types '" + strings.Join(types, ",") + "'")
         parsedFilters = append(parsedFilters, QueryFilter{domain, types})
     }
