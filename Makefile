@@ -30,7 +30,7 @@ compile: motd get
 
 test: motd
 	@echo "\033[34m●\033[39m Running tests"
-	go test
+	go test -race ./
 	@echo "\033[32m✔\033[39m Tests passed"
 
 install: motd compile
