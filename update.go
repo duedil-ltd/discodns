@@ -4,6 +4,7 @@ import (
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
     "fmt"
+    "strconv"
 )
 
 type DynamicUpdateManager struct {
@@ -18,7 +19,7 @@ type DynamicUpdateManager struct {
 // It is assumed at this level the client has already authenticated and proven
 // their right to update records in the given zone.
 func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) {
-    
+
     rrsets := [][]dns.RR{req.Answer, req.Ns}
     msg = new(dns.Msg)
     msg.SetReply(req)
@@ -60,7 +61,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     if validationStatus != dns.RcodeSuccess {
         debugMsg("Validation of prerequisites failed")
         msg.SetRcode(req, validationStatus)
-        return    
+        return
     }
 
     // Perform the updates to the domain name system
@@ -68,7 +69,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // result in a partially updated zone.
     // TODO(tarnfeld): Figure out a way of rolling back changes, perhaps make
     // use of the etcd indexes?
-    msg.SetRcode(req, performUpdate(req.Ns))
+    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, req.Ns))
 
     return
 }
@@ -141,18 +142,53 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
 // performUpdate will commit the requested updates to the database
 // It is assumed by this point all prerequisites have been validated and all
 // domains are locked.
-func performUpdate(rr []dns.RR) (rcode int) {
+func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode int) {
+    for _, rr := range records {
+        header := rr.Header()
+        if _, ok := convertersFromRR[header.Rrtype]; ok != true {
+            panic("Record converter does exist for " + dns.TypeToString[header.Rrtype])
+        }
+
+        node, err := convertRRToNode(rr, *header)
+        if err != nil {
+            panic("Got error when converting node")
+        } else if node == nil {
+            panic("Got NIL after successfully converting node")
+        }
+
+        // Prepend the etcd prefix, if we're given one
+        node.Key = prefix + node.Key
+
+        if header.Class == dns.ClassANY {
+            debugMsg("Deleting all RRs from key " + node.Key)
+            _, err := etcd.Delete(node.Key, true)
+            if err != nil {
+                debugMsg(err)
+                panic("Failed to delete RRs from key " + node.Key)
+            }
+
+        } else if header.Class == dns.ClassNONE { // Delete an RR
+            debugMsg("Delete specific RR: " + rr.String())
+        } else { // Insert RR
+            debugMsg("Inserting " + node.Value + " to " + node.Key)
+
+            // Insert the record into etcd
+            _, err = etcd.Set(node.Key, node.Value, 0)
+            if err != nil {
+                debugMsg(err)
+                panic("Failed to insert record into etcd")
+            }
+
+            // Insert the TTL record if one has been requested
+            if header.Ttl > 0 {
+                ttl := strconv.FormatInt(int64(header.Ttl), 10)
+                _, err = etcd.Set(node.Key + "/.ttl", ttl, 0)
+                if err != nil {
+                    panic("Failed to insert ttl into etcd")
+                }
+            }
+        }
+    }
+
     return dns.RcodeSuccess
-}
-
-// nameInUser will return true if the name in the dns.RR_Header given is
-// already in use, or false if not.
-func nameInUse(header dns.RR_Header) []dns.RR {
-    return nil
-}
-
-// nameInUser will return true if the name AND type in the dns.RR_Header given
-// is are already in use.
-func nameAndTypeInUse(header dns.RR_Header) bool {
-    return false
 }
