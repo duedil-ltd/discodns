@@ -73,15 +73,17 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
             res.SetReply(req)
 
             // Authenticate the request
-            if req.IsTsig() != nil && response.TsigStatus() == nil {
+            tsig := req.IsTsig()
+            if tsig != nil && response.TsigStatus() == nil {
                 sig := req.IsTsig()
                 debugMsg("Authenticated update request")
-                
+
                 // Verify the tsig is for the correct zone
                 if sig.Hdr.Name != zone {
                     res.SetRcode(req, dns.RcodeBadSig)
                 } else {
                     res = h.updateManager.Update(zone, req)
+                    res.SetTsig(tsig.Header().Name, dns.HmacMD5, 300, time.Now().Unix())
                 }
             } else {
                 debugMsg("Authentication failed")
