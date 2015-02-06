@@ -146,7 +146,7 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
     for _, rr := range records {
         header := rr.Header()
         if _, ok := convertersFromRR[header.Rrtype]; ok != true {
-            panic("Record converter does exist for " + dns.TypeToString[header.Rrtype])
+            panic("Record converter doesn't exist for " + dns.TypeToString[header.Rrtype])
         }
 
         node, err := convertRRToNode(rr, *header)
