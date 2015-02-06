@@ -225,31 +225,31 @@ var convertersFromRR = map[uint16]func (rr dns.RR, header dns.RR_Header) (node *
         return
     },
 
-    // dns.TypeAAAA: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeAAAA: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypeTXT: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeTXT: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypeCNAME: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeCNAME: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypeNS: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeNS: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypePTR: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypePTR: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypeSRV: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeSRV: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 
-    // dns.TypeSOA: func (rr *dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+    // dns.TypeSOA: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
     // },
 }
