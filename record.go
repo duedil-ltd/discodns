@@ -229,9 +229,14 @@ var convertersFromRR = map[uint16]func (rr dns.RR, header dns.RR_Header) (node *
     //     panic("Not implemented")
     // },
 
-    // dns.TypeTXT: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
-    //     panic("Not implemented")
-    // },
+    dns.TypeTXT: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+        if record, ok := rr.(*dns.TXT); ok {
+            node = &etcd.Node{
+                Key: nameToKey(header.Name, "/.TXT"),
+                Value: strings.Join(record.Txt, "\n")}
+        }
+        return
+    },
 
     // dns.TypeCNAME: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
@@ -241,13 +246,25 @@ var convertersFromRR = map[uint16]func (rr dns.RR, header dns.RR_Header) (node *
     //     panic("Not implemented")
     // },
 
-    // dns.TypePTR: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
-    //     panic("Not implemented")
-    // },
+    dns.TypePTR: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+        if record, ok := rr.(*dns.PTR); ok {
+            node = &etcd.Node{
+                Key: nameToKey(header.Name, "/.PTR"),
+                Value: record.Ptr}
+        }
 
-    // dns.TypeSRV: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
-    //     panic("Not implemented")
-    // },
+        return
+    },
+
+    dns.TypeSRV: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+        if record, ok := rr.(*dns.SRV); ok {
+            node = &etcd.Node{
+                Key: nameToKey(header.Name, "/.SRV"),
+                Value: fmt.Sprintf("%d\t%d\t%d\t%s", record.Priority, record.Weight, record.Port, record.Target)}
+        }
+
+        return
+    },
 
     // dns.TypeSOA: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
