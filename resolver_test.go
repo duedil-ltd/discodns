@@ -421,7 +421,7 @@ func TestAnswerQuestionWildcardCNAME(t *testing.T) {
     client.Set("TestAnswerQuestionCNAME/net/disco/baz/.A", "1.2.3.4", 0)
 
     query := new(dns.Msg)
-    query.SetQuestion("test.disco.net.", dns.TypeCNAME)
+    query.SetQuestion("test.disco.net.", dns.TypeA)
 
     answer := resolver.Lookup(query)
 
@@ -461,7 +461,7 @@ func TestAnswerQuestionCNAME(t *testing.T) {
     client.Set("TestAnswerQuestionCNAME/net/disco/baz/.A", "1.2.3.4", 0)
 
     query := new(dns.Msg)
-    query.SetQuestion("bar.disco.net.", dns.TypeCNAME)
+    query.SetQuestion("bar.disco.net.", dns.TypeA)
 
     answer := resolver.Lookup(query)
 
