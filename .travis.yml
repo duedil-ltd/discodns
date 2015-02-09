@@ -8,5 +8,6 @@ install:
   - "tar -zxvf etcd-v0.4.4-linux-amd64.tar.gz"
   - "etcd-v0.4.4-linux-amd64/etcd -name travis &"
   - "sleep 5" # Wait for etcd to come up
+  - "curl http://127.0.0.1:4001"
 cache: apt
 script: "make get && make test"
