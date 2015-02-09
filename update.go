@@ -182,8 +182,9 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
             // Insert the TTL record if one has been requested
             if header.Ttl > 0 {
                 ttl := strconv.FormatInt(int64(header.Ttl), 10)
-                _, err = etcd.Set(response.Node.Key + "/.ttl", ttl, 0)
+                _, err = etcd.Set(response.Node.Key + ".ttl", ttl, 0)
                 if err != nil {
+                    debugMsg(err)
                     panic("Failed to insert ttl into etcd")
                 }
             }
