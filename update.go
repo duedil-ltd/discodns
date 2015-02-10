@@ -173,7 +173,7 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
             debugMsg("Inserting " + node.Value + " to " + node.Key)
 
             // Insert the record into etcd
-            response, err := etcd.Create(node.Key, node.Value, 0)
+            response, err := etcd.CreateInOrder(node.Key, node.Value, 0)
             if err != nil {
                 debugMsg(err)
                 panic("Failed to insert record into etcd")
