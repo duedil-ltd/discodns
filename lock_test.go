@@ -10,10 +10,9 @@ func TestLock(t *testing.T) {
 }
 
 func TestSimpleLockUnlock(t *testing.T) {
-    // Ensure a clean test environment
-    client.Delete("net/discodns/._UPDATE_LOCK", true)
+    client.Delete("TestSimpleLockUnlock/", true)
 
-    lock := lockDomain(client, "discodns.net")
+    lock := lockDomain(client, "discodns.net", "TestSimpleLockUnlock")
 
     if lock.IsLocked() != true {
         t.Error("Expected lock to be locked, it was not")
@@ -30,10 +29,9 @@ func TestSimpleLockUnlock(t *testing.T) {
 }
 
 func TestConflictingLock(t *testing.T) {
-    // Ensure a clean test environment
-    client.Delete("net/discodns/._UPDATE_LOCK", true)
+    client.Delete("TestConflictingLock/", true)
 
-    lockA := lockDomain(client, "discodns.net")
+    lockA := lockDomain(client, "discodns.net", "TestConflictingLock/")
     if lockA.IsLocked() != true {
         t.Error("Expected lock to be locked, it was not")
         t.Fatal()
@@ -50,5 +48,5 @@ func TestConflictingLock(t *testing.T) {
         }
     }()
 
-    lockDomain(client, "discodns.net")
+    lockDomain(client, "discodns.net", "TestConflictingLock/")
 }

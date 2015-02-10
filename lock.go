@@ -6,6 +6,7 @@ import (
 
 type DomainLock struct {
     etcd        *etcd.Client
+    etcdPrefix  string
     domain      string
     index       uint64
     lockPath    string
@@ -17,7 +18,7 @@ func (l *DomainLock) Lock(shouldPanic bool) error {
         return nil
     }
 
-    l.lockPath = nameToKey(l.domain, "/._UPDATE_LOCK")
+    l.lockPath = l.etcdPrefix + nameToKey(l.domain, "/._UPDATE_LOCK")
     debugMsg("Locking " + l.domain + " at " + l.lockPath)
 
     response, err := l.etcd.Create(l.lockPath, "", l.lockExpiry)
@@ -72,8 +73,8 @@ func (l *DomainLock) IsLocked() (locked bool) {
 // lockDomain will lock the given domain in the given etcd cluster, and return
 // the DomainLock struct pre-populated such that calling Domain Unlock()
 // will release the lock.
-func lockDomain(etcd *etcd.Client, domain string) (lock *DomainLock) {
-    lock = &DomainLock{etcd: etcd, domain: domain, lockExpiry: 30}
+func lockDomain(etcd *etcd.Client, domain string, etcdPrefix string) (lock *DomainLock) {
+    lock = &DomainLock{etcd: etcd, domain: domain, lockExpiry: 30, etcdPrefix: etcdPrefix}
     defer lock.Lock(true)
     return lock
 }

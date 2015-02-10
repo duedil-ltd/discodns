@@ -50,7 +50,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // update will be applied.
     for _, rrs := range rrsets {
         for _, rr := range rrs {
-            lock := lockDomain(u.etcd, rr.Header().Name)
+            lock := lockDomain(u.etcd, rr.Header().Name, u.etcdPrefix)
             defer lock.Unlock(true)
         }
     }
