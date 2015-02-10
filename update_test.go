@@ -68,3 +68,48 @@ func TestDeleteRecordNoPrerequsites(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestInsertMultipleRecords(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestInsertMultipleRecords/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+    client.Delete("TestInsertMultipleRecords/", true)
+
+    record1 := &dns.SRV{
+        Hdr: dns.RR_Header{Name: "disco.net.", Rrtype: dns.TypeSRV, Class: dns.ClassINET},
+        Port: 80, Priority: 100, Weight: 100, Target: "foo.disco.net"}
+
+    record2 := &dns.TXT{
+        Hdr: dns.RR_Header{Name: "disco.net.", Rrtype: dns.TypeTXT, Class: dns.ClassINET},
+        Txt: []string{"lol"}}
+
+    msg := &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.Insert([]dns.RR{record1, record2})
+
+    result := manager.Update("disco.net.", msg)
+
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Failed to add DNS records")
+        t.Fatal()
+    }
+
+    srvAnswers, err := resolver.LookupAnswersForType("disco.net.", dns.TypeSRV)
+    if err != nil {
+        t.Error("Caught error retrieving SRV")
+        t.Fatal()
+    }
+    if len(srvAnswers) != 1 {
+        t.Error("Expected one SRV response")
+        t.Fatal()
+    }
+    txtAnswers, err := resolver.LookupAnswersForType("disco.net.", dns.TypeTXT)
+    if err != nil {
+        t.Error("Caught error retrieving txt")
+        t.Fatal()
+    }
+    if len(txtAnswers) != 1 {
+        t.Error("Expected one TXT response")
+        t.Fatal()
+    }
+}
