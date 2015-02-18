@@ -1,6 +1,8 @@
 package main
 
 import (
+    "crypto/md5"
+    "encoding/hex"
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
     "fmt"
@@ -172,8 +174,13 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
         } else { // Insert RR
             debugMsg("Inserting " + node.Value + " to " + node.Key)
 
-            // Insert the record into etcd
-            response, err := etcd.CreateInOrder(node.Key, node.Value, 0)
+            // Insert the record into etcd. Use MD5 of the node value as the
+            // 'sub-key'. This makes duplicates impossible without sacrificing
+            // TTL updates or extra pre-update lookup faff
+            hasher := md5.New()
+            hasher.Write([]byte(node.Value))
+            subkey := hex.EncodeToString(hasher.Sum(nil))
+            response, err := etcd.Set(node.Key + "/" + subkey, node.Value, 0)
             if err != nil {
                 debugMsg(err)
                 panic("Failed to insert record into etcd")
