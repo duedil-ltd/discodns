@@ -30,3 +30,30 @@ func TestSimpleLockUnlock(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestConflictingLock(t *testing.T) {
+    testKey := "TestConflictingLock/.lock"
+    client.Delete(testKey, true)
+
+    lock_a := NewEtcdKeyLock(client, testKey)
+    lock_a.WaitForAcquire(30)
+
+    lock_b := NewEtcdKeyLock(client, testKey)
+    b_locked, b_err := lock_b.WaitForAcquire(1)
+    if b_locked || b_err == nil {
+        t.Error("Expected second lock to timeout")
+        t.Fatal()
+    }
+
+    lock_c := NewEtcdKeyLock(client, testKey)
+    go func(){
+        time.Sleep(500 * time.Millisecond)
+        lock_a.Abandon()
+    }()
+
+    c_locked, c_err := lock_c.WaitForAcquire(5)
+    if !c_locked || c_err != nil {
+        t.Error("Expected third lock to succeed in time")
+        t.Fatal()
+    }
+}
