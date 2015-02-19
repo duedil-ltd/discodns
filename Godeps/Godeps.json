@@ -1,0 +1,24 @@
+{
+	"ImportPath": "github.com/github.com/duedil-ltd/discodns",
+	"GoVersion": "go1.3.3",
+	"Deps": [
+		{
+			"ImportPath": "github.com/coreos/go-etcd/etcd",
+			"Comment": "v0.4.6",
+			"Rev": "6aa2da5a7a905609c93036b9307185a04a5a84a5"
+		},
+		{
+			"ImportPath": "github.com/jessevdk/go-flags",
+			"Comment": "v1-293-g5e11878",
+			"Rev": "5e118789801496c93ba210d34ef1f2ce5a9173bd"
+		},
+		{
+			"ImportPath": "github.com/miekg/dns",
+			"Rev": "1f764075b64b12b549f178a760080763863fd731"
+		},
+		{
+			"ImportPath": "github.com/rcrowley/go-metrics",
+			"Rev": "dee209f2455f101a5e4e593dea94872d2c62d85d"
+		}
+	]
+}
