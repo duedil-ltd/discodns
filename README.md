@@ -83,7 +83,7 @@ cd discodns
 make
 ````
 
-discodns uses [godep](https://github.com/tools/godep) to manage dependency versions. `make` will run`godep restore`, which **modifies your go workspace** to pin dependecy versions.
+discodns uses [godep](https://github.com/tools/godep) to manage dependency versions. `make` will run `godep restore`, which **modifies your go workspace** to pin dependency versions.
 
 If you change version dependencies (using `go get -u ..pkg..`, or manually bumping the git rev of the package in your go workspace), then you **must run `godep save`** and commit the changes to the Godeps dir
 
