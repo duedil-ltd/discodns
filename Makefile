@@ -8,7 +8,9 @@ clean:
 
 get:
 	@echo "\033[34m●\033[39m Downloading go packages"
+	go get github.com/tools/godep
 	go get -d
+	godep restore
 	@echo "\033[32m✔\033[39m Finished downloading packages"
 
 compile:
