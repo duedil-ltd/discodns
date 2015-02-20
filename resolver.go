@@ -301,6 +301,10 @@ func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors c
                 }
             }
         }()
+    } else {
+        // nothing we can do
+        close(answers)
+        close(errors)
     }
 
     return answers, errors
