@@ -249,7 +249,7 @@ func (r *Resolver) AnswerQuestion(q dns.Question, resolveAliases bool) (answers 
             close(answers)
             close(errors)
         }()
-        for rrType, _ := range converters {
+        for rrType, _ := range convertersToRR {
             go func(rrType uint16) {
                 defer recover()
                 defer wg.Done()
@@ -343,7 +343,7 @@ func (r *Resolver) NameExists(name string) (exists bool, err error) {
 
     question := dns.Question{dns.Fqdn(name), dns.TypeANY, dns.ClassINET}
     aChan, eChan := r.AnswerQuestion(question, true)
-    answers, errors := chansGather(aChan, eChan)
+    answers, errors := gatherFromChannels(aChan, eChan)
 
     if len(errors) > 0 {
         return false, errors[0]
