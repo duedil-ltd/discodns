@@ -38,8 +38,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
         }
     }
 
-    // Ensure we recover from any panicking goroutine, this helps ensure we don't
-    // leave any acquired locks around if possible
+    // Ensure we recover from any panicking goroutine
     defer func() {
         if r := recover(); r != nil {
             debugMsg("[PANIC] " + fmt.Sprint(r))
@@ -47,14 +46,20 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
         }
     }()
 
-    // Attempt to acquire a lock on all of the domains referenced in the update
-    // If any lock attempt fails, all acquired locks will be released and no
-    // update will be applied.
-    for _, rrs := range rrsets {
-        for _, rr := range rrs {
-            lock := lockDomain(u.etcd, rr.Header().Name, u.etcdPrefix)
-            defer lock.Unlock(true)
-        }
+    // Attempt to acquire the dns-updates lock key.
+    // TODO (orls): This means all updates from all running instances are
+    // applied fully serially; this is less than ideal, the spec says they
+    // should be serial only when conflicting with one another. But...this is
+    // easier than building full transactions isolation mgmt :) For a low
+    // frequency of updates, this should fine.
+    lock := NewEtcdKeyLock(u.etcd, u.etcdPrefix + "._DISCODNS_UPDATE_LOCK")
+    defer lock.Abandon()
+    // block until locked or timed-out
+    _, err := lock.WaitForAcquire(30)
+    if err != nil {
+        debugMsg("Failed to acquire or keep the update lock: ", err)
+        msg.SetRcode(req, dns.RcodeServerFailure)
+        return
     }
 
     // Validate the prerequisites of the update, returning immediately if they
