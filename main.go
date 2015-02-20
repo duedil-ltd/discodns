@@ -31,6 +31,7 @@ var (
         Accept              []string    `long:"accept" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
         Reject              []string    `long:"reject" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
         TsigSecret          []string    `short:"s" long:"tsig" description:"Transaction signature secret in the format zone:secret"`
+        TsigFreeZones       []string    `long:"unauth" description:"Zone names that can be updated without TSIG authentication"`
     }
 )
 
@@ -91,6 +92,15 @@ func main() {
         tsigSecret[dns.Fqdn(components[0])] = components[1]
     }
 
+    // create a unique list of zone names that allow unauthenticated access
+    tsigFreeZones := make(map[string]struct{}, len(Options.TsigFreeZones))
+    for _, zone := range Options.TsigFreeZones {
+        if zone[len(zone)-1] != '.' {
+            zone = zone + "."
+        }
+        tsigFreeZones[zone] = struct{}{}
+    }
+
     // Start up the DNS resolver server
     server := &Server{
         addr: Options.ListenAddress,
@@ -100,6 +110,7 @@ func main() {
         wTimeout: time.Duration(5) * time.Second,
         defaultTtl: Options.DefaultTtl,
         tsigSecret: tsigSecret,
+        tsigFreeZones: tsigFreeZones,
         queryFilterer: &QueryFilterer{acceptFilters: parseFilters(Options.Accept),
                                       rejectFilters: parseFilters(Options.Reject)}}
 

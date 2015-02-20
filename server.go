@@ -16,6 +16,7 @@ type Server struct {
     wTimeout        time.Duration
     defaultTtl      uint32
     tsigSecret      map[string]string
+    tsigFreeZones   map[string]struct{}
     queryFilterer   *QueryFilterer
 }
 
@@ -23,6 +24,7 @@ type Handler struct {
     resolver        *Resolver
     queryFilterer   *QueryFilterer
     updateManager   *DynamicUpdateManager
+    tsigFreeZones   map[string]struct{}
 
     // Metrics
     requestCounter      metrics.Counter
@@ -86,8 +88,13 @@ func (h *Handler) Handle(response dns.ResponseWriter, req *dns.Msg) {
                     res.SetTsig(tsig.Header().Name, dns.HmacMD5, 300, time.Now().Unix())
                 }
             } else {
-                debugMsg("Authentication failed")
-                res.SetRcode(req, dns.RcodeNotAuth)
+                if _, ok := h.tsigFreeZones[zone]; ok {
+                    debugMsg("allowing unauthenticated update")
+                    res = h.updateManager.Update(zone, req)
+                } else {
+                    debugMsg("Update authentication failed")
+                    res.SetRcode(req, dns.RcodeNotAuth)
+                }
             }
         } else {
             res = new(dns.Msg)
@@ -139,7 +146,8 @@ func (s *Server) Run() {
         rejectCounter: tcpRejectCounter,
         responseTimer: tcpResponseTimer,
         queryFilterer: s.queryFilterer,
-        updateManager: &updateManager}
+        updateManager: &updateManager,
+        tsigFreeZones: s.tsigFreeZones}
     udpDNShandler := &Handler{
         resolver: &resolver,
         requestCounter: udpRequestCounter,
@@ -147,7 +155,8 @@ func (s *Server) Run() {
         rejectCounter: udpRejectCounter,
         responseTimer: udpResponseTimer,
         queryFilterer: s.queryFilterer,
-        updateManager: &updateManager}
+        updateManager: &updateManager,
+        tsigFreeZones: s.tsigFreeZones}
 
     udpHandler := dns.NewServeMux()
     tcpHandler := dns.NewServeMux()
