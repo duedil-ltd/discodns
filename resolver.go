@@ -152,7 +152,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
 
     if q.Qclass == dns.ClassINET {
         aChan, eChan = r.AnswerQuestion(q)
-        answers, errors = chansGather(aChan, eChan)
+        answers, errors = gatherFromChannels(aChan, eChan)
     }
 
     errored = errored || len(errors) > 0
@@ -169,7 +169,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
                     Qclass: q.Qclass}
 
                 aChan, eChan = r.AnswerQuestion(question)
-                answers, errors = chansGather(aChan, eChan)
+                answers, errors = gatherFromChannels(aChan, eChan)
 
                 errored = errored || len(errors) > 0
                 if len(answers) > 0 {
@@ -207,8 +207,9 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     return
 }
 
-
-func chansGather(rrsIn chan dns.RR, errsIn chan error) (rrs []dns.RR, errs []error) {
+// Gather up results from answer and error channels into slices. Waits for the
+// channels to be closed before returning.
+func gatherFromChannels(rrsIn chan dns.RR, errsIn chan error) (rrs []dns.RR, errs []error) {
     rrs = []dns.RR{}
     errs = []error{}
     done := 0
