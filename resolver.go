@@ -151,7 +151,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     var eChan chan error
 
     if q.Qclass == dns.ClassINET {
-        aChan, eChan = r.AnswerQuestion(q, true)
+        aChan, eChan = r.AnswerQuestion(q)
         answers, errors = chansGather(aChan, eChan)
     }
 
@@ -168,7 +168,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
                     Qtype: q.Qtype,
                     Qclass: q.Qclass}
 
-                aChan, eChan = r.AnswerQuestion(question, true)
+                aChan, eChan = r.AnswerQuestion(question)
                 answers, errors = chansGather(aChan, eChan)
 
                 errored = errored || len(errors) > 0
@@ -238,7 +238,7 @@ func chansGather(rrsIn chan dns.RR, errsIn chan error) (rrs []dns.RR, errs []err
 // the way. The function will return immediately, and spawn off a bunch of goroutines
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
-func (r *Resolver) AnswerQuestion(q dns.Question, resolveAliases bool) (answers chan dns.RR, errors chan error) {
+func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors chan error) {
     answers = make(chan dns.RR)
     errors = make(chan error)
 
