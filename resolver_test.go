@@ -372,6 +372,30 @@ func TestAnswerQuestionANY(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionUnsupportedType(t *testing.T) {
+    // query for a type that we don't have support for (I tried to pick the most
+    // obscure rr type that the dns library supports and that we're unlikely to
+    // add support for)
+    query := new(dns.Msg)
+    query.SetQuestion("bar.disco.net.", dns.TypeEUI64)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) != 0 {
+        t.Error("Expected no answers, got ", len(answer.Answer))
+        t.Fatal()
+    }
+
+    if answer.Rcode != dns.RcodeNameError {
+        t.Error("Expected NXDOMAIN response code, got", dns.RcodeToString[answer.Rcode])
+        t.Fatal()
+    }
+
+    if len(answer.Ns) > 0 {
+        t.Error("Didn't expect any authority records")
+    }
+}
+
 func TestAnswerQuestionWildcardAAAANoMatch(t *testing.T) {
     resolver.etcdPrefix = "TestAnswerQuestionWildcardANoMatch/"
     client.Set("TestAnswerQuestionWildcardANoMatch/net/disco/bar/*/.AAAA", "::1", 0)

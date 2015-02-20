@@ -135,79 +135,51 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     msg.Authoritative = true
     msg.RecursionAvailable = false // We're a nameserver, no recursion for you!
 
-    wait := sync.WaitGroup{}
-    answers := make(chan dns.RR)
-    errors := make(chan error)
+    answers := []dns.RR{}
+    errors := []error{}
+    errored := false
+
+    var aChan chan dns.RR
+    var eChan chan error
 
     if q.Qclass == dns.ClassINET {
-        r.AnswerQuestion(answers, errors, q, &wait, true)
+        aChan, eChan = r.AnswerQuestion(q, true)
+        answers, errors = gatherFromChannels(aChan, eChan)
     }
 
-    // Spawn a goroutine to close the channel as soon as all of the things
-    // are done. This allows us to ensure we'll wait for all workers to finish
-    // but allows us to collect up answers concurrently.
-    go func() {
-        wait.Wait()
-
+    errored = errored || len(errors) > 0
+    if len(answers) == 0 {
         // If we failed to find any answers, let's keep looking up the tree for
         // any wildcard domain entries.
-        if len(msg.Answer) == 0 {
-            parts := strings.Split(q.Name, ".")
-            for level := 1; level < len(parts); level++ {
-                domain := strings.Join(parts[level:], ".")
-                if len(domain) > 1 {
-                    question := dns.Question{
-                        Name: "*." + dns.Fqdn(domain),
-                        Qtype: q.Qtype,
-                        Qclass: q.Qclass}
+        parts := strings.Split(q.Name, ".")
+        for level := 1; level < len(parts); level++ {
+            domain := strings.Join(parts[level:], ".")
+            if len(domain) > 1 {
+                question := dns.Question{
+                    Name: "*." + dns.Fqdn(domain),
+                    Qtype: q.Qtype,
+                    Qclass: q.Qclass}
 
-                    r.AnswerQuestion(answers, errors, question, &wait, true)
+                aChan, eChan = r.AnswerQuestion(question, true)
+                answers, errors = gatherFromChannels(aChan, eChan)
 
-                    wait.Wait()
-                    if len(answers) > 0 {
-                        break;
-                    }
+                errored = errored || len(errors) > 0
+                if len(answers) > 0 {
+                    break;
                 }
             }
         }
-
-        debugMsg("Finished processing all goroutines, closing channels")
-        close(answers)
-        close(errors)
-    }()
+    }
 
     miss_counter := metrics.GetOrRegisterCounter("resolver.answers.miss", metrics.DefaultRegistry)
     hit_counter := metrics.GetOrRegisterCounter("resolver.answers.hit", metrics.DefaultRegistry)
     error_counter := metrics.GetOrRegisterCounter("resolver.answers.error", metrics.DefaultRegistry)
 
-    // Collect up all of the answers and any errors
-    done := 0
-    errors_count := 0
-
-    for done < 2 {
-        select {
-        case rr, ok := <-answers:
-            if ok {
-                rr.Header().Name = q.Name
-                msg.Answer = append(msg.Answer, rr)
-            } else {
-                done++
-            }
-        case err, ok := <-errors:
-            if ok {
-                // TODO(tarnfeld): Send special TXT records with a server error response code
-                debugMsg("Caught error ", err)
-                errors_count++
-            } else {
-                done++
-            }
-        }
-    }
-
-    if errors_count > 0 {
+    if errored {
+        // TODO(tarnfeld): Send special TXT records with a server error response code
         error_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeServerFailure)
-    } else if len(msg.Answer) == 0 {
+    } else if len(answers) == 0 {
         soa := r.Authority(q.Name)
         miss_counter.Inc(1)
         msg.SetRcode(req, dns.RcodeNameError)
@@ -218,17 +190,50 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
         }
     } else {
         hit_counter.Inc(1)
+        for _, rr := range answers {
+            rr.Header().Name = q.Name
+            msg.Answer = append(msg.Answer, rr)
+        }
     }
 
     return
 }
+
+// Gather up results from answer and error channels into slices. Waits for the
+// channels to be closed before returning.
+func gatherFromChannels(rrsIn chan dns.RR, errsIn chan error) (rrs []dns.RR, errs []error) {
+    rrs = []dns.RR{}
+    errs = []error{}
+    done := 0
+    for done < 2 {
+        select {
+        case rr, ok := <-rrsIn:
+            if ok {
+                rrs = append(rrs, rr)
+            } else {
+                done++
+            }
+        case err, ok := <-errsIn:
+            if ok {
+                debugMsg("Caught error", err)
+                errs = append(errs, err)
+            } else {
+                done++
+            }
+        }
+    }
+    return rrs, errs
+}
+
 
 // AnswerQuestion takes two channels, one for answers and one for errors. It will answer the
 // given question writing the answers as dns.RR structures, and any errors it encounters along
 // the way. The function will return immediately, and spawn off a bunch of goroutines
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
-func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.Question, wg *sync.WaitGroup, resolveAliases bool) {
+func (r *Resolver) AnswerQuestion(q dns.Question, resolveAliases bool) (answers chan dns.RR, errors chan error) {
+    answers = make(chan dns.RR)
+    errors = make(chan error)
 
     typeStr := strings.ToLower(dns.TypeToString[q.Qtype])
     type_counter := metrics.GetOrRegisterCounter("resolver.answers.type." + typeStr, metrics.DefaultRegistry)
@@ -237,9 +242,14 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
     debugMsg("Answering question ", q)
 
     if q.Qtype == dns.TypeANY {
+        wg := sync.WaitGroup{}
         wg.Add(len(convertersToRR))
-
-        for rrType, _ := range convertersToRR {
+        go func(){
+            wg.Wait()
+            close(answers)
+            close(errors)
+        }()
+        for rrType, _ := range converters {
             go func(rrType uint16) {
                 defer recover()
                 defer wg.Done()
@@ -255,11 +265,11 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
             }(rrType)
         }
     } else if _, ok := convertersToRR[q.Qtype]; ok {
-        wg.Add(1)
-
         go func() {
-            defer wg.Done()
-
+            defer func(){
+                close(answers)
+                close(errors)
+            }()
             records, err := r.LookupAnswersForType(q.Name, q.Qtype)
             if err != nil {
                 errors <- err
@@ -284,7 +294,13 @@ func (r *Resolver) AnswerQuestion(answers chan dns.RR, errors chan error, q dns.
                 }
             }
         }()
+    } else {
+        // nothing we can do
+        close(answers)
+        close(errors)
     }
+
+    return answers, errors
 }
 
 func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []dns.RR, err error) {
