@@ -99,10 +99,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                // RFC Meaning: "Name is in use"
                     debugMsg("Domain that should exist does not ", header.Name)
                     return dns.RcodeNameError
                 }
             } else {
+                // RFC Meaning: "RRset exists (value independent)"
                 if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) > 0 {
                     if ok != nil {
                         return dns.RcodeServerFailure
@@ -119,10 +121,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                     if ok != nil {
                         return dns.RcodeServerFailure
                     }
+                // RFC Meaning: "Name is not in use"
                     debugMsg("Domain that should not exist does ", header.Name)
                     return dns.RcodeYXDomain
                 }
             } else {
+                // RFC meaning: "RRset does not exist"
                 if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) == 0 {
                     if ok != nil {
                         return dns.RcodeServerFailure
@@ -132,6 +136,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                 }
             }
         } else if header.Class == dns.ClassINET {
+            if header.Rrtype == dns.TypeANY {
+                return dns.RcodeFormatError
+            } else {
+                // RFC Meaning: "RRset exists (value dependent)"
+            }
+
             // TODO(tarnfeld): Perform strict comparisons between the resource records
             // if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
             //     if ok != nil {
