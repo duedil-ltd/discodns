@@ -351,6 +351,7 @@ func (r *Resolver) NameExists(name string) (exists bool, err error) {
     return len(answers) > 0, nil
 }
 
+// RRSetExists returns true if RRs exist for the given name and type (value independent)
 func (r *Resolver) RRSetExists(name string, rrType uint16) (exists bool, err error) {
     answers, err := r.LookupAnswersForType(dns.Fqdn(name), rrType)
     if err != nil {

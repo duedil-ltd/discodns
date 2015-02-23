@@ -106,11 +106,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                 }
             } else {
                 // RFC Meaning: "RRset exists (value independent)"
-                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) > 0 {
-                    if ok != nil {
-                        return dns.RcodeServerFailure
-                    }
-                    debugMsg("RRset that should exist does not ", header.Name)
+                exists, err := resolver.RRSetExists(header.Name, header.Rrtype)
+                if err != nil {
+                    return dns.RcodeServerFailure
+                }
+                if !exists {
+                    debugMsg("RRset that should exist does not ", header.Name, header.Rrtype)
                     return dns.RcodeNXRrset
                 }
             }
@@ -129,10 +130,11 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                 }
             } else {
                 // RFC meaning: "RRset does not exist"
-                if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); len(answers) == 0 {
-                    if ok != nil {
-                        return dns.RcodeServerFailure
-                    }
+                exists, err := resolver.RRSetExists(header.Name, header.Rrtype)
+                if err != nil {
+                    return dns.RcodeServerFailure
+                }
+                if exists {
                     debugMsg("RRset that should not exist does ", header.Name)
                     return dns.RcodeYXRrset
                 }
