@@ -81,10 +81,17 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     return
 }
 
+// internal utility struct for making a map of RRsets a bit neater to construct
+type matchKey struct {
+    name string
+    rrType uint16
+}
+
 // validatePrerequisites will perform all necessary validation checks against
 // update prerequisites and return the relevant status is validation fails,
 // otherwise NOERROR(0) will be returned.
 func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
+    rrSetsToMatch := make(map[matchKey][]dns.RR)
     for _, record := range rr {
         header := record.Header()
         if header.Ttl != 0 {
@@ -144,16 +151,21 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
                 return dns.RcodeFormatError
             } else {
                 // RFC Meaning: "RRset exists (value dependent)"
+                mKey := matchKey{name: header.Name, rrType: header.Rrtype}
+                rrSetsToMatch[mKey] = append(rrSetsToMatch[mKey], record)
             }
-
-            // TODO(tarnfeld): Perform strict comparisons between the resource records
-            // if answers, ok := resolver.LookupAnswersForType(header.Name, header.Rrtype); answers != rr {
-            //     if ok != nil {
-            //         return dns.RcodeServerFailure
-            //     }
-            // }
         } else {
             return dns.RcodeFormatError
+        }
+    }
+
+    for matchKey, rrs := range rrSetsToMatch {
+        matched, err := resolver.RRSetMatches(matchKey.name, matchKey.rrType, rrs)
+        if err != nil {
+            return dns.RcodeServerFailure
+        }
+        if !matched {
+            return dns.RcodeNXRrset
         }
     }
 
