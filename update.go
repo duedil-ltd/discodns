@@ -95,11 +95,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
             if header.Rdlength != 0 {
                 return dns.RcodeFormatError
             } else if header.Rrtype == dns.TypeANY {
-                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY); len(answers) > 0 {
-                    if ok != nil {
-                        return dns.RcodeServerFailure
-                    }
                 // RFC Meaning: "Name is in use"
+                exists, err := resolver.NameExists(header.Name)
+                if err != nil {
+                    return dns.RcodeServerFailure
+                }
+                if !exists {
                     debugMsg("Domain that should exist does not ", header.Name)
                     return dns.RcodeNameError
                 }
@@ -117,11 +118,12 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
             if header.Rdlength != 0 {
                 return dns.RcodeFormatError
             } else if header.Rrtype == dns.TypeANY {
-                if answers, ok := resolver.LookupAnswersForType(header.Name, dns.TypeANY); len(answers) == 0 {
-                    if ok != nil {
-                        return dns.RcodeServerFailure
-                    }
                 // RFC Meaning: "Name is not in use"
+                exists, err := resolver.NameExists(header.Name)
+                if err != nil {
+                    return dns.RcodeServerFailure
+                }
+                if exists {
                     debugMsg("Domain that should not exist does ", header.Name)
                     return dns.RcodeYXDomain
                 }
