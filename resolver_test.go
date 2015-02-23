@@ -970,10 +970,3 @@ func TestRRSetExistsDoesNotExist(t *testing.T) {
     }
 }
 
-func TestMatchRRMatches(t *testing.T) {
-
-}
-
-func TestMatchRRDoesNotMatch(t *testing.T) {
-
-}

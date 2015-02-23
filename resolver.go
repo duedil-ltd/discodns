@@ -361,6 +361,30 @@ func (r *Resolver) RRSetExists(name string, rrType uint16) (exists bool, err err
     return len(answers) > 0, nil
 }
 
-func (r *Resolver) MatchRR(rr dns.RR) (matches, exists bool, err error) {
-    return false, false, nil
+// RRSetMatches checks that the set of records in the DNS for the given name
+// and type *exactly* match the given RRs: their data must match, and there must
+// be no more or less RRs
+func (r *Resolver) RRSetMatches(name string, rrType uint16, rrs []dns.RR) (matches bool, err error) {
+    answers, err := r.LookupAnswersForType(dns.Fqdn(name), rrType)
+    if err != nil {
+        return false, err
+    }
+    if len(answers) != len(rrs) {
+        return false, nil
+    }
+    matched := 0
+    // I'm sure theres a neater/faster way than comparing all to all, but meh
+    for _, rr := range rrs {
+        for _, answer := range answers {
+            // TTLS are explicitly excluded from comparison
+            cmp := dns.Copy(answer)
+            cmp.Header().Ttl = 0
+            // TODO(orls): is string() enough? is there any relevant info not in the string reprs?
+            if cmp.String() == rr.String() {
+                matched++
+                break
+            }
+        }
+    }
+    return matched == len(rrs), nil
 }
