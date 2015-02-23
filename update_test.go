@@ -215,3 +215,73 @@ func TestPrerequisites_NameNotInUse(t *testing.T) {
         t.Fatal()
     }
 }
+
+func TestPrerequisites_ValueIndependentRRSet(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestPrerequisites_ValueIndependentRRSet/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+
+    client.Delete("TestPrerequisites_ValueIndependentRRSet/", true)
+    client.Set("TestPrerequisites_ValueIndependentRRSet/net/disco/foo/.A", "1.1.1.1", 0)
+    client.Set("TestPrerequisites_ValueIndependentRRSet/net/disco/bar/.A", "1.1.1.1", 0)
+    client.Set("TestPrerequisites_ValueIndependentRRSet/net/disco/bar/.PTR", "bar.disco.net", 0)
+
+    recordToAdd := &dns.A{
+        Hdr: dns.RR_Header{Name: "baz.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET},
+        A: net.ParseIP("1.2.3.4")}
+
+    prereq_foo_a := &dns.ANY{ Hdr: dns.RR_Header{Name: "foo.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET}}
+    prereq_foo_ptr := &dns.ANY{ Hdr: dns.RR_Header{Name: "foo.disco.net.", Rrtype: dns.TypePTR, Class: dns.ClassINET}}
+    prereq_bar_a := &dns.ANY{ Hdr: dns.RR_Header{Name: "bar.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET}}
+    prereq_bar_ptr := &dns.ANY{ Hdr: dns.RR_Header{Name: "bar.disco.net.", Rrtype: dns.TypePTR, Class: dns.ClassINET}}
+
+    // same name, many types, expecting failure
+    msg_1 := &dns.Msg{}
+    msg_1.Question = append(msg_1.Question, dns.Question{Name: "bar.disco.net."})
+    msg_1.Insert([]dns.RR{recordToAdd})
+    msg_1.RRsetUsed([]dns.RR{prereq_foo_a, prereq_foo_ptr})
+
+    result_1 := manager.Update("disco.net.", msg_1)
+    if result_1.Rcode != dns.RcodeNXRrset {
+        debugMsg(result_1)
+        t.Error("expected update to fail with NXRRSET, actually got", dns.RcodeToString[result_1.Rcode])
+        t.Fatal()
+    }
+
+    // many names, same type, expecting failure
+    msg_2 := &dns.Msg{}
+    msg_2.Question = append(msg_2.Question, dns.Question{Name: "bar.disco.net."})
+    msg_2.Insert([]dns.RR{recordToAdd})
+    msg_2.RRsetUsed([]dns.RR{prereq_foo_ptr, prereq_bar_ptr})
+
+    result_2 := manager.Update("disco.net.", msg_2)
+    if result_2.Rcode != dns.RcodeNXRrset {
+        debugMsg(result_2)
+        t.Error("expected update to fail with NXRRSET, actually got", dns.RcodeToString[result_2.Rcode])
+        t.Fatal()
+    }
+
+    // same name, many types, expecting success
+    msg_3 := &dns.Msg{}
+    msg_3.Question = append(msg_3.Question, dns.Question{Name: "bar.disco.net."})
+    msg_3.Insert([]dns.RR{recordToAdd})
+    msg_3.RRsetUsed([]dns.RR{prereq_bar_a, prereq_bar_ptr})
+
+    result_3 := manager.Update("disco.net.", msg_3)
+    if result_3.Rcode != dns.RcodeSuccess {
+        debugMsg(result_3)
+        t.Error("Failed to add DNS record with rr-exists prereqs, got", dns.RcodeToString[result_3.Rcode])
+        t.Fatal()
+    }
+    // many names, same type, expecting success
+    msg_4 := &dns.Msg{}
+    msg_4.Question = append(msg_4.Question, dns.Question{Name: "bar.disco.net."})
+    msg_4.Insert([]dns.RR{recordToAdd})
+    msg_4.RRsetUsed([]dns.RR{prereq_foo_a, prereq_bar_a})
+
+    result_4 := manager.Update("disco.net.", msg_4)
+    if result_4.Rcode != dns.RcodeSuccess {
+        debugMsg(result_4)
+        t.Error("Failed to add DNS record with rr-exists prereqs, got", dns.RcodeToString[result_4.Rcode])
+        t.Fatal()
+    }
+}
