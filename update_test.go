@@ -200,3 +200,28 @@ func TestPrerequisites_ValueIndependentRRSet(t *testing.T) {
     // many names, same type, expecting success
     if ! _prereqsTestHelper(t, manager, "RRsetUsed", dns.RcodeSuccess, []dns.RR{prereq_foo_a, prereq_bar_a}) { t.Fatal() }
 }
+
+func TestPrerequisites_ValueDependentRRSet(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestPrerequisites_ValueDependentRRSet/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+
+    client.Delete("TestPrerequisites_ValueDependentRRSet/", true)
+    client.Set("TestPrerequisites_ValueDependentRRSet/net/disco/foo/.A", "1.1.1.1", 0)
+    client.Set("TestPrerequisites_ValueDependentRRSet/net/disco/bar/.A", "1.1.1.1", 0)
+    client.Set("TestPrerequisites_ValueDependentRRSet/net/disco/bar/.PTR", "match.disco.net", 0)
+
+    prereq_foo_a_match, _   := dns.NewRR("foo.disco.net. 0 IN A 1.1.1.1")
+    prereq_foo_a_miss, _    := dns.NewRR("foo.disco.net. 0 IN A 2.2.2.2")
+    prereq_bar_a_match, _   := dns.NewRR("bar.disco.net. 0 IN A 1.1.1.1")
+    prereq_bar_a_miss, _    := dns.NewRR("bar.disco.net. 0 IN A 2.2.2.2")
+    prereq_bar_ptr_match, _ := dns.NewRR("bar.disco.net. 0 IN PTR match.disco.net")
+    prereq_bar_ptr_miss, _  := dns.NewRR("bar.disco.net. 0 IN PTR miss.disco.net")
+
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeNXRrset, []dns.RR{prereq_foo_a_miss}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeNXRrset, []dns.RR{prereq_foo_a_miss, prereq_bar_a_miss}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeNXRrset, []dns.RR{prereq_foo_a_miss, prereq_bar_ptr_miss}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeNXRrset, []dns.RR{prereq_foo_a_match, prereq_bar_a_miss}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeNXRrset, []dns.RR{prereq_foo_a_match, prereq_bar_ptr_miss}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeSuccess, []dns.RR{prereq_foo_a_match, prereq_bar_a_match}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeSuccess, []dns.RR{prereq_foo_a_match, prereq_bar_a_match, prereq_bar_ptr_match}) { t.Fatal() }
+}
