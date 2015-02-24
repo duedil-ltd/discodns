@@ -26,6 +26,11 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     msg = new(dns.Msg)
     msg.SetReply(req)
 
+    // dns update re-aporopriates DNS message blocks:
+    // msg.Question: Zone info for whole request
+    // msg.Answer:   prerequisites
+    // msg.Ns:       the actual update RRs
+
     // Verify the updates are within the zone we're modifying, since cross
     // zone updates are invalid.
     for _, rrs := range rrsets {
@@ -64,10 +69,17 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
 
     // Validate the prerequisites of the update, returning immediately if they
     // are not satisfied.
-    validationStatus := validatePrerequisites(req.Answer, u.resolver)
-    if validationStatus != dns.RcodeSuccess {
+    prereqValidation := validatePrerequisites(req.Answer, u.resolver)
+    if prereqValidation != dns.RcodeSuccess {
         debugMsg("Validation of prerequisites failed")
-        msg.SetRcode(req, validationStatus)
+        msg.SetRcode(req, prereqValidation)
+        return
+    }
+
+    updateValidation := validateUpdates(req.Ns, req.Question[0])
+    if updateValidation != dns.RcodeSuccess {
+        debugMsg("Validation of update instructions failed")
+        msg.SetRcode(req, updateValidation)
         return
     }
 
@@ -90,6 +102,7 @@ type matchKey struct {
 // validatePrerequisites will perform all necessary validation checks against
 // update prerequisites and return the relevant status is validation fails,
 // otherwise NOERROR(0) will be returned.
+// See RFC 2136, section 3.2
 func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
     rrSetsToMatch := make(map[matchKey][]dns.RR)
     for _, record := range rr {
@@ -172,9 +185,55 @@ func validatePrerequisites(rr []dns.RR, resolver *Resolver) (rcode int) {
     return dns.RcodeSuccess
 }
 
+// validateUpdates ensures that the given update instructions conform to the RFC
+// and are processable, before we begin mutating state
+// See RFC 2136, section 3.4.1
+func validateUpdates(rrs []dns.RR, updateZone dns.Question) (rcode int) {
+
+    // name-in-zone checks have already been performed.
+
+    badTypes := map[uint16]bool{ dns.TypeIXFR : true,
+        dns.TypeAXFR : true, dns.TypeMAILB : true, dns.TypeMAILA : true,
+        dns.TypeANY : true}
+    anyClsBadTypes := map[uint16]bool{ dns.TypeIXFR : true,
+        dns.TypeAXFR : true, dns.TypeMAILB : true,dns.TypeMAILA : true}
+
+    for _, rr := range rrs {
+        header := rr.Header()
+        if header.Class == updateZone.Qclass {
+            if badTypes[header.Rrtype] {
+                debugMsg("Bad type for class:", dns.ClassToString[header.Class],
+                    header.Name, dns.TypeToString[header.Rrtype])
+                return dns.RcodeFormatError
+            }
+        } else if header.Class == dns.ClassANY {
+            if header.Ttl != 0 || header.Rdlength != 0 || anyClsBadTypes[header.Rrtype] {
+                debugMsg("Bad ttl/length/type for class:", dns.ClassToString[header.Class],
+                    header.Name, header.Ttl, header.Rdlength, dns.TypeToString[header.Rrtype])
+                return dns.RcodeFormatError
+            }
+        } else if header.Class == dns.ClassNONE {
+            if header.Ttl != 0 || badTypes[header.Rrtype] {
+                debugMsg("Bad ttl/type for class:", dns.ClassToString[header.Class],
+                    header.Name, header.Ttl, dns.TypeToString[header.Rrtype])
+                return dns.RcodeFormatError
+            }
+        } else {
+            return dns.RcodeFormatError
+        }
+        // separately from the RFC validation, fail for RR types we don't understand yet
+        if _, ok := convertersFromRR[header.Rrtype]; ok != true {
+            debugMsg("Record converter doesn't exist for " + dns.TypeToString[header.Rrtype])
+            return dns.RcodeServerFailure
+        }
+    }
+    return dns.RcodeSuccess
+}
+
 // performUpdate will commit the requested updates to the database
 // It is assumed by this point all prerequisites have been validated and all
 // domains are locked.
+// See RFC 2136, section 3.4.2
 func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode int) {
     for _, rr := range records {
         header := rr.Header()
