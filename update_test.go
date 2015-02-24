@@ -191,13 +191,17 @@ func TestPrerequisites_ValueIndependentRRSet(t *testing.T) {
     prereq_bar_a := &dns.ANY{ Hdr: dns.RR_Header{Name: "bar.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET}}
     prereq_bar_ptr := &dns.ANY{ Hdr: dns.RR_Header{Name: "bar.disco.net.", Rrtype: dns.TypePTR, Class: dns.ClassINET}}
 
-    // same name, many types, expecting failure
-    if ! _prereqsTestHelper(t, manager, "RRsetUsed", dns.RcodeNXRrset, []dns.RR{prereq_foo_a, prereq_foo_ptr}) { t.Fatal() }
-    // many names, same type, expecting failure
-    if ! _prereqsTestHelper(t, manager, "RRsetUsed", dns.RcodeNXRrset, []dns.RR{prereq_foo_ptr, prereq_bar_ptr}) { t.Fatal() }
-    // same name, many types, expecting success
+    if ! _prereqsTestHelper(t, manager, "RRsetNotUsed", dns.RcodeSuccess, []dns.RR{prereq_foo_ptr}) { t.Fatal() }
+
+    if ! _prereqsTestHelper(t, manager, "RRsetUsed",    dns.RcodeNXRrset, []dns.RR{prereq_foo_a, prereq_foo_ptr}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "RRsetNotUsed", dns.RcodeYXRrset, []dns.RR{prereq_foo_a, prereq_foo_ptr}) { t.Fatal() }
+
+    if ! _prereqsTestHelper(t, manager, "RRsetUsed",    dns.RcodeNXRrset, []dns.RR{prereq_foo_ptr, prereq_bar_ptr}) { t.Fatal() }
+    if ! _prereqsTestHelper(t, manager, "RRsetNotUsed", dns.RcodeYXRrset, []dns.RR{prereq_foo_ptr, prereq_bar_ptr}) { t.Fatal() }
+
     if ! _prereqsTestHelper(t, manager, "RRsetUsed", dns.RcodeSuccess, []dns.RR{prereq_bar_a, prereq_bar_ptr}) { t.Fatal() }
-    // many names, same type, expecting success
+    if ! _prereqsTestHelper(t, manager, "RRsetNotUsed", dns.RcodeYXRrset, []dns.RR{prereq_bar_a, prereq_bar_ptr}) { t.Fatal() }
+
     if ! _prereqsTestHelper(t, manager, "RRsetUsed", dns.RcodeSuccess, []dns.RR{prereq_foo_a, prereq_bar_a}) { t.Fatal() }
 }
 
