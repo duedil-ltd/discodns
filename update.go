@@ -234,7 +234,7 @@ func validateUpdates(rrs []dns.RR, updateZone dns.Question) (rcode int) {
 // It is assumed by this point all prerequisites have been validated and all
 // domains are locked.
 // See RFC 2136, section 3.4.2
-func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode int) {
+func performUpdate(prefix string, etcdClient *etcd.Client, records []dns.RR) (rcode int) {
     for _, rr := range records {
         header := rr.Header()
         if _, ok := convertersFromRR[header.Rrtype]; ok != true {
@@ -256,7 +256,7 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
             if header.Rrtype == dns.TypeANY {
                 // RFC Meaning: Delete all RRsets from a name
                 debugMsg("Deleting all RRs from key " + node.Key)
-                _, err := etcd.Delete(node.Key, true)
+                _, err := etcdClient.Delete(node.Key, true)
                 if err != nil {
                     debugMsg(err)
                     panic("Failed to delete RRs from key " + node.Key)
@@ -288,7 +288,7 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
             hasher := md5.New()
             hasher.Write([]byte(node.Value))
             subkey := hex.EncodeToString(hasher.Sum(nil))
-            response, err := etcd.Set(node.Key + "/" + subkey, node.Value, 0)
+            response, err := etcdClient.Set(node.Key + "/" + subkey, node.Value, 0)
             if err != nil {
                 debugMsg(err)
                 panic("Failed to insert record into etcd")
@@ -297,7 +297,7 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
             // Insert the TTL record if one has been requested
             if header.Ttl > 0 {
                 ttl := strconv.FormatInt(int64(header.Ttl), 10)
-                _, err = etcd.Set(response.Node.Key + ".ttl", ttl, 0)
+                _, err = etcdClient.Set(response.Node.Key + ".ttl", ttl, 0)
                 if err != nil {
                     debugMsg(err)
                     panic("Failed to insert ttl into etcd")
