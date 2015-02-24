@@ -193,16 +193,34 @@ func performUpdate(prefix string, etcd *etcd.Client, records []dns.RR) (rcode in
         node.Key = prefix + node.Key
 
         if header.Class == dns.ClassANY {
-            debugMsg("Deleting all RRs from key " + node.Key)
-            _, err := etcd.Delete(node.Key, true)
-            if err != nil {
-                debugMsg(err)
-                panic("Failed to delete RRs from key " + node.Key)
-            }
 
-        } else if header.Class == dns.ClassNONE { // Delete an RR
-            debugMsg("Delete specific RR: " + rr.String())
-        } else { // Insert RR
+            if header.Rrtype == dns.TypeANY {
+                // RFC Meaning: Delete all RRsets from a name
+                debugMsg("Deleting all RRs from key " + node.Key)
+                _, err := etcd.Delete(node.Key, true)
+                if err != nil {
+                    debugMsg(err)
+                    panic("Failed to delete RRs from key " + node.Key)
+                }
+            } else {
+                // RFC Meaning: Delete an RRset
+                panic("Not yet supported: Delete an RRset")
+            }
+        } else if header.Class == dns.ClassNONE {
+            // RFC Meaning: Delete an RR from an RRset
+            panic("Not yet supported: Delete an RR from an RRset")
+            // TODO(orls): We should have already validated that this has a
+            // valid Type (not ANY)
+        } else {
+            // RFC Meaning: Add to an RRset
+
+            // TODO(orls): We should have already validated that the class is
+            // the same as the zone (which basically means INET, but it should
+            // be checked prior)
+
+            // TODO(orls): We should have already validated that this has a
+            // valid Type (not ANY)
+
             debugMsg("Inserting " + node.Value + " to " + node.Key)
 
             // Insert the record into etcd. Use MD5 of the node value as the
