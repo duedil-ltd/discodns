@@ -88,7 +88,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // result in a partially updated zone.
     // TODO(tarnfeld): Figure out a way of rolling back changes, perhaps make
     // use of the etcd indexes?
-    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, u.resolver, req.Ns))
+    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, u.resolver, req.Question[0], req.Ns))
 
     return
 }
@@ -234,7 +234,8 @@ func validateUpdates(rrs []dns.RR, updateZone dns.Question) (rcode int) {
 // It is assumed by this point all prerequisites have been validated and all
 // domains are locked.
 // See RFC 2136, section 3.4.2
-func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, records []dns.RR) (rcode int) {
+func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, updateZone dns.Question, records []dns.RR) (rcode int) {
+
     for _, rr := range records {
         header := rr.Header()
         debugMsg("update rr: header", header)
@@ -242,67 +243,63 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, r
             panic("Record converter doesn't exist for " + dns.TypeToString[header.Rrtype])
         }
 
-        updateNode, err := convertRRToNode(rr, *header)
-        if err != nil {
-            panic("Got error when converting node")
-        } else if updateNode == nil {
-            panic("Got NIL after successfully converting node")
-        }
+        nameDir := nameToKey(header.Name, "")
 
-        // Prepend the etcd prefix, if we're given one
-        newRecordDir := prefix + updateNode.Key
-
+        // Gather up all deletes
         if header.Class == dns.ClassANY {
-            // RFC Meaning if type is ANY: Delete all RRsets from a name
-            // RFC Meaning if type is not ANY: Delete an RRset (all RRs of type)
+            var typesToDelete []uint16
+            if header.Rrtype == dns.TypeANY {
+                // RFC Meaning: Delete all RRsets from a name
 
-            // `convertRRToNode` will already have given us the right key
-            // depending on Type
-
-            // TODO: the key will be wrong for ANY, no?
-            // TODO: for ANY, need to only delete RRs and not child names. See what the RFC says,
-            // is it an error if there are child nodes?
-
-            debugMsg("Deleting all RRs from key " + newRecordDir)
-            _, err := etcdClient.Delete(newRecordDir, true)
-            if err != nil && !missingKeyErr(err) {
-                debugMsg(err)
-                panic("Failed to delete RRs from key " + newRecordDir)
+                // Look up all RRs for supported types. Do this 'manually' because we
+                // don't want standard resolver behaviour about CNAMEs
+                // TODO: this means it's not parallelized like it normally is
+                for rrType, _ := range convertersToRR {
+                    if header.Name == updateZone.Name && (rrType == dns.TypeNS || rrType == dns.TypeSOA) {
+                        // RFC explicitly forbids deleting NS/SOA for the zone in this way
+                        continue
+                    }
+                    typesToDelete = append(typesToDelete, rrType)
+                }
+            } else {
+                // RFC Meaning: Delete an RRset (all RRs of type)
+                typesToDelete = append(typesToDelete, header.Rrtype)
             }
-
-            _, err = etcdClient.Delete(newRecordDir + ".ttl", true)
-            if err != nil && !missingKeyErr(err) {
-                debugMsg(err)
-                panic("Failed to delete RR TTLs from key " + newRecordDir + ".ttl")
+            for _, rrType := range typesToDelete {
+                records, err := resolver.GetFromStorage(nameDir + "/." + dns.TypeToString[rrType])
+                if err != nil && !missingKeyErr(err) {
+                    debugMsg(err)
+                    panic("Failed to fetch existing records for " + nameDir)
+                }
+                for _, toDelete := range records {
+                    deleteKeyAndTtl(etcdClient, toDelete.node.Key)
+                }
             }
         } else {
+
+            updateNode, err := convertRRToNode(rr, *header)
+            if err != nil {
+                panic("Got error when converting node")
+            } else if updateNode == nil {
+                panic("Got NIL after successfully converting node")
+            }
 
             existingRecords, err := resolver.GetFromStorage(updateNode.Key)
             if err != nil && !missingKeyErr(err) {
                 debugMsg(err)
-                panic("Failed to fetch existing RRs for key " + newRecordDir)
+                panic("Failed to fetch existing RRs for key " + updateNode.Key)
             }
 
             if header.Class == dns.ClassNONE {
                 // RFC Meaning: Delete an RR from an RRset
                 for _, existing := range existingRecords {
                     if existing.node.Value == updateNode.Value {
-                        // delete the node itself, and it's matching TTL record (if any)
-                        debugMsg("Deleting RR " + newRecordDir)
-                        _, err := etcdClient.Delete(newRecordDir, true)
-                        if err != nil && !missingKeyErr(err) {
-                            debugMsg(err)
-                            panic("Failed to delete RR " + newRecordDir)
-                        }
-
-                        _, err = etcdClient.Delete(newRecordDir + ".ttl", true)
-                        if err != nil && !missingKeyErr(err) {
-                            debugMsg(err)
-                            panic("Failed to delete RR TTL key " + newRecordDir + ".ttl")
-                        }
+                        deleteKeyAndTtl(etcdClient, existing.node.Key)
                     }
                 }
             } else {
+
+                // RFC Meaning: Add to an RRset
 
                 // TODO: special-cases for CNAMES, according to RFC 2136:
                 // - if CNAME update is requested, and non-CNAME records exist for the given name, ignore
@@ -312,10 +309,7 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, r
                 // "...cannot conflict with the long-standing rule in RFC1034 that a name must not exist as any other
                 // record type if it exists as a CNAME. (The rule has been updated for DNSSEC in RFC2535 to allow
                 // CNAMEs to have RRSIG, DNSKEY and NSEC records.)"
-
                 // TODO(orls): add these special cases to the special case for CNAMEs. Yayyyyy standards
-
-                // RFC Meaning: Add to an RRset
 
                 foundExisting := false
                 var ttlKeys []string
@@ -333,7 +327,7 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, r
                 if !foundExisting {
                     // Then we need to add, which means we need a directory.
                     // Convert any old-style single-keys to directories
-                    if len(existingRecords) == 1 && existingRecords[0].node.Key == "/" + newRecordDir {
+                    if len(existingRecords) == 1 && existingRecords[0].node.Key == "/" + prefix + updateNode.Key {
                         originalNode := existingRecords[0].node
                         logger.Printf("[WARNING] ------")
                         logger.Printf("[WARNING] Converting existing value to a directory!")
@@ -361,7 +355,7 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, r
                         }
                     }
 
-                    newKey := newRecordDir + "/" + recordSubkey(updateNode.Value)
+                    newKey := prefix + updateNode.Key + "/" + recordSubkey(updateNode.Value)
                     ttlKeys = append(ttlKeys, newKey + ".ttl")
 
                     debugMsg("Inserting new record to " + newKey)
@@ -389,6 +383,23 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, r
     }
 
     return dns.RcodeSuccess
+}
+
+// Internal boileplate-reducer to delete a specific key (non-recursive) and
+// handle it's TTL key too
+func deleteKeyAndTtl(etcdClient *etcd.Client, delKey string) {
+    delTTLKey := delKey + ".ttl"
+    debugMsg("Deleting RR with key " + delKey)
+    _, err := etcdClient.Delete(delKey, true)
+    if err != nil && !missingKeyErr(err) {
+        debugMsg(err)
+        panic("Failed to delete RRs with key " + delKey)
+    }
+    _, err = etcdClient.Delete(delTTLKey, true)
+    if err != nil && !missingKeyErr(err) {
+        debugMsg(err)
+        panic("Failed to delete RR TTL key " + delTTLKey)
+    }
 }
 
 // recordSubkey yields the sub-key string to be used for a new RR in a
