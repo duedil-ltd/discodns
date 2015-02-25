@@ -84,7 +84,62 @@ func TestDeleteNameNoPrerequsites(t *testing.T) {
 
     result = manager.Update("disco.net.", msg)
     if result.Rcode != dns.RcodeSuccess {
-        debugMsg(result)
+        t.Error("Got failure from a no-op delete")
+        t.Fatal()
+    }
+}
+
+func TestDeleteRecordsetNoPrerequsites(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestDeleteRecordsetNoPrerequsites/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+
+    client.Delete("TestDeleteRecordsetNoPrerequsites/", true)
+    client.Set("TestDeleteRecordsetNoPrerequsites/net/disco/foo/.A", "1.1.1.1", 0)
+    client.Set("TestDeleteRecordsetNoPrerequsites/net/disco/foo/.PTR/a", "a", 0)
+    client.Set("TestDeleteRecordsetNoPrerequsites/net/disco/foo/.PTR/b", "b", 0)
+    client.Set("TestDeleteRecordsetNoPrerequsites/net/disco/foo/.PTR/a.ttl", "100", 0)
+
+    record := &dns.PTR{Hdr: dns.RR_Header{Name: "foo.disco.net.", Rrtype: dns.TypePTR}, Ptr: "whatever"}
+
+    msg := &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.RemoveRRset([]dns.RR{record})
+
+    result := manager.Update("disco.net.", msg)
+    if result.Rcode != dns.RcodeSuccess {
+        t.Error("Failed to remove DNS records")
+        t.Fatal()
+    }
+
+    answers, err := resolver.LookupAnswersForType("foo.disco.net.", dns.TypePTR)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) > 0 {
+        t.Error("Expected zero answers for foo.disco.net. PTR")
+        t.Fatal()
+    }
+
+    // Check the A record was left alone:
+    answers, err = resolver.LookupAnswersForType("foo.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 1 {
+        t.Error("Expected one answer for foo.disco.net. A")
+        t.Fatal()
+    }
+
+    // Delete for something that doesn't already exist:
+    record = &dns.PTR{Hdr: dns.RR_Header{Name: "foo.disco.net.", Rrtype: dns.TypePTR}, Ptr: "whatever"}
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.RemoveRRset([]dns.RR{record})
+
+    result = manager.Update("disco.net.", msg)
+    if result.Rcode != dns.RcodeSuccess {
         t.Error("Got failure from a no-op delete")
         t.Fatal()
     }

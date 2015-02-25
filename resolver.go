@@ -71,7 +71,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
                 return
             }
 
-            // If we don't have a TLL try and find one
+            // If we don't have a TTL try and find one
             if tryTtl {
                 ttlKey := node.Key + ".ttl"
 
