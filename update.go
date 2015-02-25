@@ -88,7 +88,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // result in a partially updated zone.
     // TODO(tarnfeld): Figure out a way of rolling back changes, perhaps make
     // use of the etcd indexes?
-    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, req.Ns))
+    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, u.resolver, req.Ns))
 
     return
 }
@@ -234,77 +234,178 @@ func validateUpdates(rrs []dns.RR, updateZone dns.Question) (rcode int) {
 // It is assumed by this point all prerequisites have been validated and all
 // domains are locked.
 // See RFC 2136, section 3.4.2
-func performUpdate(prefix string, etcdClient *etcd.Client, records []dns.RR) (rcode int) {
+func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, records []dns.RR) (rcode int) {
     for _, rr := range records {
         header := rr.Header()
+        debugMsg("update rr: header", header)
         if _, ok := convertersFromRR[header.Rrtype]; ok != true {
             panic("Record converter doesn't exist for " + dns.TypeToString[header.Rrtype])
         }
 
-        node, err := convertRRToNode(rr, *header)
+        updateNode, err := convertRRToNode(rr, *header)
         if err != nil {
             panic("Got error when converting node")
-        } else if node == nil {
+        } else if updateNode == nil {
             panic("Got NIL after successfully converting node")
         }
 
         // Prepend the etcd prefix, if we're given one
-        node.Key = prefix + node.Key
+        newRecordDir := prefix + updateNode.Key
 
         if header.Class == dns.ClassANY {
+            // RFC Meaning if type is ANY: Delete all RRsets from a name
+            // RFC Meaning if type is not ANY: Delete an RRset (all RRs of type)
 
-            if header.Rrtype == dns.TypeANY {
-                // RFC Meaning: Delete all RRsets from a name
-                debugMsg("Deleting all RRs from key " + node.Key)
-                _, err := etcdClient.Delete(node.Key, true)
-                if err != nil {
-                    debugMsg(err)
-                    panic("Failed to delete RRs from key " + node.Key)
+            // `convertRRToNode` will already have given us the right key
+            // depending on Type
+
+            // TODO: the key will be wrong for ANY, no?
+            // TODO: for ANY, need to only delete RRs and not child names. See what the RFC says,
+            // is it an error if there are child nodes?
+
+            debugMsg("Deleting all RRs from key " + newRecordDir)
+            _, err := etcdClient.Delete(newRecordDir, true)
+            if err != nil && !missingKeyErr(err) {
+                debugMsg(err)
+                panic("Failed to delete RRs from key " + newRecordDir)
+            }
+
+            _, err = etcdClient.Delete(newRecordDir + ".ttl", true)
+            if err != nil && !missingKeyErr(err) {
+                debugMsg(err)
+                panic("Failed to delete RR TTLs from key " + newRecordDir + ".ttl")
+            }
+        } else {
+
+            existingRecords, err := resolver.GetFromStorage(updateNode.Key)
+            if err != nil && !missingKeyErr(err) {
+                debugMsg(err)
+                panic("Failed to fetch existing RRs for key " + newRecordDir)
+            }
+
+            if header.Class == dns.ClassNONE {
+                // RFC Meaning: Delete an RR from an RRset
+                for _, existing := range existingRecords {
+                    if existing.node.Value == updateNode.Value {
+                        // delete the node itself, and it's matching TTL record (if any)
+                        debugMsg("Deleting RR " + newRecordDir)
+                        _, err := etcdClient.Delete(newRecordDir, true)
+                        if err != nil && !missingKeyErr(err) {
+                            debugMsg(err)
+                            panic("Failed to delete RR " + newRecordDir)
+                        }
+
+                        _, err = etcdClient.Delete(newRecordDir + ".ttl", true)
+                        if err != nil && !missingKeyErr(err) {
+                            debugMsg(err)
+                            panic("Failed to delete RR TTL key " + newRecordDir + ".ttl")
+                        }
+                    }
                 }
             } else {
-                // RFC Meaning: Delete an RRset
-                panic("Not yet supported: Delete an RRset")
-            }
-        } else if header.Class == dns.ClassNONE {
-            // RFC Meaning: Delete an RR from an RRset
-            panic("Not yet supported: Delete an RR from an RRset")
-            // TODO(orls): We should have already validated that this has a
-            // valid Type (not ANY)
-        } else {
-            // RFC Meaning: Add to an RRset
 
-            // TODO(orls): We should have already validated that the class is
-            // the same as the zone (which basically means INET, but it should
-            // be checked prior)
+                // TODO: special-cases for CNAMES, according to RFC 2136:
+                // - if CNAME update is requested, and non-CNAME records exist for the given name, ignore
+                // - if non-CNAME update is requested, and CNAME records exist for the given name, ignore
 
-            // TODO(orls): We should have already validated that this has a
-            // valid Type (not ANY)
+                // Further explanation from http://docs.freebsd.org/doc/8.0-RELEASE/usr/share/doc/bind9/arm/man.nsupdate.html :
+                // "...cannot conflict with the long-standing rule in RFC1034 that a name must not exist as any other
+                // record type if it exists as a CNAME. (The rule has been updated for DNSSEC in RFC2535 to allow
+                // CNAMEs to have RRSIG, DNSKEY and NSEC records.)"
 
-            debugMsg("Inserting " + node.Value + " to " + node.Key)
+                // TODO(orls): add these special cases to the special case for CNAMEs. Yayyyyy standards
 
-            // Insert the record into etcd. Use MD5 of the node value as the
-            // 'sub-key'. This makes duplicates impossible without sacrificing
-            // TTL updates or extra pre-update lookup faff
-            hasher := md5.New()
-            hasher.Write([]byte(node.Value))
-            subkey := hex.EncodeToString(hasher.Sum(nil))
-            response, err := etcdClient.Set(node.Key + "/" + subkey, node.Value, 0)
-            if err != nil {
-                debugMsg(err)
-                panic("Failed to insert record into etcd")
-            }
+                // RFC Meaning: Add to an RRset
 
-            // Insert the TTL record if one has been requested
-            if header.Ttl > 0 {
-                ttl := strconv.FormatInt(int64(header.Ttl), 10)
-                _, err = etcdClient.Set(response.Node.Key + ".ttl", ttl, 0)
-                if err != nil {
-                    debugMsg(err)
-                    panic("Failed to insert ttl into etcd")
+                foundExisting := false
+                var ttlKeys []string
+
+                // Check for existing matching records, in which case just update TTL.
+                // Otherwise there's risk of duplicates
+                for _, existing := range existingRecords {
+                    if existing.node.Value == updateNode.Value {
+                        debugMsg("update req matched existing rr with key " + existing.node.Key)
+                        foundExisting = true
+                        ttlKeys = append(ttlKeys, existing.node.Key + ".ttl")
+                    }
+                }
+
+                if !foundExisting {
+                    // Then we need to add, which means we need a directory.
+                    // Convert any old-style single-keys to directories
+                    if len(existingRecords) == 1 && existingRecords[0].node.Key == "/" + newRecordDir {
+                        originalNode := existingRecords[0].node
+                        logger.Printf("[WARNING] ------")
+                        logger.Printf("[WARNING] Converting existing value to a directory!")
+                        logger.Printf("[WARNING] Existing record is old-style single key: " + originalNode.Key)
+                        logger.Printf("[WARNING] ------")
+
+                        convertedKey := originalNode.Key + "/" + recordSubkey(originalNode.Value)
+                        _, convertErr := etcdClient.SetDir(originalNode.Key, 0)
+                        if convertErr != nil {
+                            debugMsg(convertErr)
+                            // panic("Failed to insert record into etcd")
+                        }
+                        _, convertErr = etcdClient.Set(convertedKey, originalNode.Value, 0)
+                        if convertErr != nil {
+                            debugMsg(convertErr)
+                            // panic("Failed to insert record into etcd")
+                        }
+                        if existingRecords[0].ttl != 0 {
+                            convertTTL := strconv.FormatInt(int64(existingRecords[0].ttl), 10)
+                            _, convertErr = etcdClient.Set(convertedKey + ".ttl", convertTTL, 0)
+                            if convertErr != nil {
+                                debugMsg(convertErr)
+                                // panic("Failed to insert record into etcd")
+                            }
+                        }
+                    }
+
+                    newKey := newRecordDir + "/" + recordSubkey(updateNode.Value)
+                    ttlKeys = append(ttlKeys, newKey + ".ttl")
+
+                    debugMsg("Inserting new record to " + newKey)
+                    _, err := etcdClient.Set(newKey, updateNode.Value, 0)
+                    if err != nil {
+                        debugMsg(err)
+                        // panic("Failed to insert record into etcd")
+                    }
+                }
+
+                // Insert the TTL record if one has been requested
+                if header.Ttl > 0 {
+                    ttl := strconv.FormatInt(int64(header.Ttl), 10)
+                    for _, ttlKey := range ttlKeys {
+                        debugMsg("Inserting/updating TTL key " + ttlKey)
+                        _, err = etcdClient.Set(ttlKey, ttl, 0)
+                        if err != nil {
+                            debugMsg(err)
+                            // panic("Failed to insert ttl into etcd")
+                        }
+                    }
                 }
             }
         }
     }
 
     return dns.RcodeSuccess
+}
+
+// recordSubkey yields the sub-key string to be used for a new RR in a
+// directory, based on it's data. The MD5 of the node value is used, making
+// duplicates impossible.
+func recordSubkey(value string) (subkey string) {
+    hasher := md5.New()
+    hasher.Write([]byte(value))
+    return hex.EncodeToString(hasher.Sum(nil))
+}
+
+// internal helper to determine if an error from etcd operations is a 100-code
+// error, i.e. that the key is missing.
+func missingKeyErr(err error) (ok bool) {
+    etcdErr, cast := err.(*etcd.EtcdError)
+    if cast && etcdErr.ErrorCode == 100 {
+        return true
+    }
+    return false
 }

@@ -304,3 +304,141 @@ func TestPrerequisites_ValueDependentRRSet(t *testing.T) {
     if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeSuccess, []dns.RR{prereq_foo_a_match, prereq_bar_a_match}) { t.Fatal() }
     if ! _prereqsTestHelper(t, manager, "Used", dns.RcodeSuccess, []dns.RR{prereq_foo_a_match, prereq_bar_a_match, prereq_bar_ptr_match}) { t.Fatal() }
 }
+
+func TestUpsertExisting(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestUpsertExisting/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+
+    client.Delete("TestUpsertExisting/", true)
+    client.Set("TestUpsertExisting/net/disco/singlekey/.A", "1.1.1.1", 0)
+    client.Set("TestUpsertExisting/net/disco/singlekey/.A.ttl", "123", 0)
+    client.Set("TestUpsertExisting/net/disco/directory/.A/6465ec74397c9126916786bbcd6d7601", "1.1.1.1", 0)
+    client.Set("TestUpsertExisting/net/disco/directory/.A/6465ec74397c9126916786bbcd6d7601.ttl", "123", 0)
+    client.Set("TestUpsertExisting/net/disco/directory/.A/nonMd5KeyName", "2.2.2.2", 0)
+    client.Set("TestUpsertExisting/net/disco/directory/.A/nonMd5KeyName.ttl", "123", 0)
+
+    // Update with same value (to a non-directory key): TTL should change
+    updateSingle := &dns.A{
+        Hdr: dns.RR_Header{Name: "singlekey.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
+        A: net.ParseIP("1.1.1.1")}
+
+    msg := &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net.", Qclass: dns.ClassINET})
+    msg.Insert([]dns.RR{updateSingle})
+
+    result := manager.Update("disco.net.", msg)
+
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Failed to update existing DNS record")
+        t.Fatal()
+    }
+
+    answers, err := resolver.LookupAnswersForType("singlekey.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 1 {
+        t.Error("Expected exactly one answer for discodns.net.")
+        t.Fatal()
+    }
+    answerHeader := answers[0].Header()
+    if answerHeader.Ttl != 1234 {
+        t.Error("Didn't get expected TTL on new record")
+        t.Fatal()
+    }
+
+    // Insert a new one: should auto-convert single-value to directory?
+    // TODO: not sure what we should consider correct behaviour here.
+    addNewToSingle := &dns.A{
+        Hdr: dns.RR_Header{Name: "singlekey.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
+        A: net.ParseIP("2.2.2.2")}
+
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net.", Qclass: dns.ClassINET})
+    msg.Insert([]dns.RR{addNewToSingle})
+
+    result = manager.Update("disco.net.", msg)
+
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Failed to insert new DNS record to single-value (non-directory) node")
+        t.Error(" -- (Permitting test to continue for now...) --")
+        // t.Fatal()
+    }
+
+    answers, err = resolver.LookupAnswersForType("singlekey.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 2 {
+        t.Error("Expected two answers for singlekey.discodns.net. after update")
+        t.Error(" -- (Permitting test to continue for now...) --")
+        // t.Fatal()
+    }
+
+    // Update with same value (to a directory child key, md5 subkey): TTL should change
+    updateDirChild := &dns.A{
+        Hdr: dns.RR_Header{Name: "directory.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
+        A: net.ParseIP("1.1.1.1")}
+
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net.", Qclass: dns.ClassINET})
+    msg.Insert([]dns.RR{updateDirChild})
+
+    result = manager.Update("disco.net.", msg)
+
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Failed to update existing record (directory child with hashed subkey)")
+        t.Fatal()
+    }
+
+    answers, err = resolver.LookupAnswersForType("directory.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 2 {
+        t.Error("Expected two answers for directory.discodns.net.")
+        t.Fatal()
+    }
+
+    // Update with same value (to a directory child key, non-md5 subkey): TTL should change
+    updateDirChildMessyName := &dns.A{
+        Hdr: dns.RR_Header{Name: "directory.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
+        A: net.ParseIP("2.2.2.2")}
+
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net.", Qclass: dns.ClassINET})
+    msg.Insert([]dns.RR{updateDirChildMessyName})
+
+    result = manager.Update("disco.net.", msg)
+
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Failed to update existing record (directory child with messy unhashed subkey)")
+        t.Fatal()
+    }
+
+    answers, err = resolver.LookupAnswersForType("directory.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 2 {
+        t.Error("Expected two answers for directory.discodns.net.")
+        t.Fatal()
+    }
+
+    for _, answer := range answers {
+        header := answer.Header()
+        if header.Ttl != 1234 {
+            t.Error("Didn't get expected TTL on directory.discodns.net record", header.Name)
+            t.Fatal()
+        }
+    }
+}
+
