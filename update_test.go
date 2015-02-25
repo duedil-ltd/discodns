@@ -38,15 +38,17 @@ func TestInsertNewRecordNoPrerequsites(t *testing.T) {
     }
 }
 
-func TestDeleteRecordNoPrerequsites(t *testing.T) {
-    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestRecordNoPrerequsites/", resolver: resolver}
+func TestDeleteNameNoPrerequsites(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestDeleteNameNoPrerequsites/", resolver: resolver}
     resolver.etcdPrefix = manager.etcdPrefix
 
-    // record := &dns.A{
-    //     Hdr: dns.RR_Header{Name: "disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET},
-    //     A: net.ParseIP("1.2.3.4")}
+    client.Delete("TestDeleteNameNoPrerequsites/", true)
+    client.Set("TestDeleteNameNoPrerequsites/net/disco/foo/.A", "1.1.1.1", 0)
+    client.Set("TestDeleteNameNoPrerequsites/net/disco/foo/.PTR/a", "a", 0)
+    client.Set("TestDeleteNameNoPrerequsites/net/disco/foo/.PTR/b", "b", 0)
+    client.Set("TestDeleteNameNoPrerequsites/net/disco/foo/.PTR/a.ttl", "100", 0)
 
-    record := &dns.ANY{Hdr: dns.RR_Header{Name: "disco.net."}}
+    record := &dns.ANY{Hdr: dns.RR_Header{Name: "foo.disco.net."}}
 
     msg := &dns.Msg{}
     msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
@@ -59,13 +61,26 @@ func TestDeleteRecordNoPrerequsites(t *testing.T) {
         t.Fatal()
     }
 
-    answers, err := resolver.LookupAnswersForType("disco.net.", dns.TypeA)
+    answers, err := resolver.LookupAnswersForType("foo.disco.net.", dns.TypeANY)
     if err != nil {
         t.Error("Caught error resolving domain")
         t.Fatal()
     }
     if len(answers) > 0 {
-        t.Error("Expected zero answers for discodns.net.")
+        t.Error("Expected zero answers for foo.disco.net.")
+        t.Fatal()
+    }
+
+    // Delete for something that doesn't already exist:
+    record = &dns.ANY{Hdr: dns.RR_Header{Name: "bar.disco.net."}}
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.RemoveName([]dns.RR{record})
+
+    result = manager.Update("disco.net.", msg)
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("Got failure from a no-op delete")
         t.Fatal()
     }
 }
