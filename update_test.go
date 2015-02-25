@@ -12,7 +12,7 @@ func TestInsertNewRecordNoPrerequsites(t *testing.T) {
     resolver.etcdPrefix = manager.etcdPrefix
 
     record := &dns.A{
-        Hdr: dns.RR_Header{Name: "disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET},
+        Hdr: dns.RR_Header{Name: "disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
         A: net.ParseIP("1.2.3.4")}
 
     msg := &dns.Msg{}
@@ -34,6 +34,11 @@ func TestInsertNewRecordNoPrerequsites(t *testing.T) {
     }
     if len(answers) != 1 {
         t.Error("Expected exactly one answer for discodns.net.")
+        t.Fatal()
+    }
+    answerHeader := answers[0].Header()
+    if answerHeader.Ttl != 1234 {
+        t.Error("Didn't get expected TTL on new record")
         t.Fatal()
     }
 }
