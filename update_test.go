@@ -442,3 +442,61 @@ func TestUpsertExisting(t *testing.T) {
     }
 }
 
+func TestInsertCname(t *testing.T) {
+    manager := &DynamicUpdateManager{etcd: client, etcdPrefix: "TestInsertCname/", resolver: resolver}
+    resolver.etcdPrefix = manager.etcdPrefix
+
+    client.Delete("TestInsertCname/", true)
+    client.Set("TestInsertCname/net/disco/target/.A", "1.1.1.1", 0)
+    client.Set("TestInsertCname/net/disco/alias/.CNAME", "target.disco.net.", 0)
+
+    newCname := &dns.CNAME{
+        Hdr: dns.RR_Header{Name: "target.disco.net.", Rrtype: dns.TypeCNAME, Class: dns.ClassINET, Ttl: 1234},
+        Target: "foo.disco.net."}
+    msg := &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.Insert([]dns.RR{newCname})
+
+    result := manager.Update("disco.net.", msg)
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("DNS update query failed")
+        t.Fatal()
+    }
+
+    // despite success, the cname insert should have been ignored
+    answers, err := resolver.LookupAnswersForType("target.disco.net.", dns.TypeCNAME)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 0 {
+        t.Error("Expected no answers for target.discodns.net CNAME")
+        t.Fatal()
+    }
+
+    newA := &dns.A{
+        Hdr: dns.RR_Header{Name: "alias.disco.net.", Rrtype: dns.TypeA, Class: dns.ClassINET, Ttl: 1234},
+        A: net.ParseIP("1.2.3.4")}
+    msg = &dns.Msg{}
+    msg.Question = append(msg.Question, dns.Question{Name: "disco.net."})
+    msg.Insert([]dns.RR{newA})
+
+    result = manager.Update("disco.net.", msg)
+    if result.Rcode != dns.RcodeSuccess {
+        debugMsg(result)
+        t.Error("DNS update query failed")
+        t.Fatal()
+    }
+
+    // despite success, the A insert should have been ignored
+    answers, err = resolver.LookupAnswersForType("alias.disco.net.", dns.TypeA)
+    if err != nil {
+        t.Error("Caught error resolving domain")
+        t.Fatal()
+    }
+    if len(answers) != 0 {
+        t.Error("Expected no answers for alias.discodns.net A")
+        t.Fatal()
+    }
+}

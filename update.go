@@ -7,6 +7,7 @@ import (
     "github.com/miekg/dns"
     "fmt"
     "strconv"
+    "strings"
 )
 
 type DynamicUpdateManager struct {
@@ -238,7 +239,6 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, u
 
     for _, rr := range records {
         header := rr.Header()
-        debugMsg("update rr: header", header)
         if _, ok := convertersFromRR[header.Rrtype]; ok != true {
             panic("Record converter doesn't exist for " + dns.TypeToString[header.Rrtype])
         }
@@ -298,18 +298,39 @@ func performUpdate(prefix string, etcdClient *etcd.Client, resolver *Resolver, u
                     }
                 }
             } else {
-
                 // RFC Meaning: Add to an RRset
 
-                // TODO: special-cases for CNAMES, according to RFC 2136:
-                // - if CNAME update is requested, and non-CNAME records exist for the given name, ignore
-                // - if non-CNAME update is requested, and CNAME records exist for the given name, ignore
-
+                // Ignore certain inserts in presence of CNAMEs, as per RFC.
                 // Further explanation from http://docs.freebsd.org/doc/8.0-RELEASE/usr/share/doc/bind9/arm/man.nsupdate.html :
                 // "...cannot conflict with the long-standing rule in RFC1034 that a name must not exist as any other
                 // record type if it exists as a CNAME. (The rule has been updated for DNSSEC in RFC2535 to allow
                 // CNAMEs to have RRSIG, DNSKEY and NSEC records.)"
                 // TODO(orls): add these special cases to the special case for CNAMEs. Yayyyyy standards
+
+                hasCNAME := false
+                hasNonCNAME := false
+                neighbouringTypes, err := etcdClient.Get(prefix + nameDir, false, false)
+                if err == nil {
+                    for _, n := range neighbouringTypes.Node.Nodes {
+                        splits := strings.Split(n.Key, nameDir + "/.")
+                        if len(splits) != 2  || strings.HasSuffix(splits[1], ".ttl") {
+                            continue
+                        }
+                        if splits[1] == "CNAME" {
+                            hasCNAME = true
+                        } else {
+                            hasNonCNAME = true
+                        }
+                    }
+                }
+
+                if header.Rrtype == dns.TypeCNAME && hasNonCNAME {
+                    debugMsg("Ignoring insert for CNAME due to existing non-CNAME record(s) for " + header.Name)
+                    continue
+                } else if header.Rrtype != dns.TypeCNAME && hasCNAME {
+                    debugMsg("Ignoring insert for " + dns.TypeToString[header.Rrtype] + " due to existing CNAME record(s) for " + header.Name)
+                    continue
+                }
 
                 foundExisting := false
                 var ttlKeys []string

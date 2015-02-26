@@ -238,9 +238,14 @@ var convertersFromRR = map[uint16]func (rr dns.RR, header dns.RR_Header) (node *
         return
     },
 
-    // dns.TypeCNAME: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
-    //     panic("Not implemented")
-    // },
+    dns.TypeCNAME: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
+        if record, ok := rr.(*dns.CNAME); ok {
+            node = &etcd.Node{
+                Key: nameToKey(header.Name, "/.CNAME"),
+                Value: record.Target}
+        }
+        return
+    },
 
     // dns.TypeNS: func (rr dns.RR, header dns.RR_Header) (node *etcd.Node, err error) {
     //     panic("Not implemented")
