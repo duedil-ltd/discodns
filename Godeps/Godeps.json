@@ -3,6 +3,16 @@
 	"GoVersion": "go1.3.3",
 	"Deps": [
 		{
+			"ImportPath": "github.com/coreos/etcd/etcdserver/etcdhttp/httptypes",
+			"Comment": "v2.0.3-21-ge2928cd",
+			"Rev": "e2928cd97a5f8deca93b8e500c7eefaed9a326f7"
+		},
+		{
+			"ImportPath": "github.com/coreos/etcd/pkg/types",
+			"Comment": "v2.0.3-21-ge2928cd",
+			"Rev": "e2928cd97a5f8deca93b8e500c7eefaed9a326f7"
+		},
+		{
 			"ImportPath": "github.com/coreos/go-etcd/etcd",
 			"Comment": "v0.4.6",
 			"Rev": "6aa2da5a7a905609c93036b9307185a04a5a84a5"
