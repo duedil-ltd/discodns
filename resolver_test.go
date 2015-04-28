@@ -415,6 +415,86 @@ func TestAnswerQuestionUnsupportedType(t *testing.T) {
     }
 }
 
+func TestAnswerQuestionWildcardCNAME(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionCNAME/"
+    client.Set("TestAnswerQuestionCNAME/net/disco/*/.CNAME", "baz.disco.net.", 0)
+    client.Set("TestAnswerQuestionCNAME/net/disco/baz/.A", "1.2.3.4", 0)
+
+    query := new(dns.Msg)
+    query.SetQuestion("test.disco.net.", dns.TypeA)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) != 1 {
+        t.Error("Expected one answers, got ", len(answer.Answer))
+        t.Fatal()
+    }
+
+    if len(answer.Ns) > 0 {
+        t.Error("Didn't expect any authority records")
+        t.Fatal()
+    }
+
+    rr := answer.Answer[0].(*dns.CNAME)
+    header := rr.Header()
+
+    // Verify the header is correct
+    if header.Name != "test.disco.net." {
+        t.Error("Expected record with name test.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeCNAME {
+        t.Error("Expected record with type AAAA:", header.Rrtype)
+        t.Fatal()
+    }
+
+    // Verify the CNAME data is correct
+    if rr.Target != "baz.disco.net." {
+        t.Error("Expected CNAME target baz.disco.net.:", header.Rrtype)
+        t.Fatal()
+    }
+}
+
+func TestAnswerQuestionCNAME(t *testing.T) {
+    resolver.etcdPrefix = "TestAnswerQuestionCNAME/"
+    client.Set("TestAnswerQuestionCNAME/net/disco/bar/.CNAME", "baz.disco.net.", 0)
+    client.Set("TestAnswerQuestionCNAME/net/disco/baz/.A", "1.2.3.4", 0)
+
+    query := new(dns.Msg)
+    query.SetQuestion("bar.disco.net.", dns.TypeA)
+
+    answer := resolver.Lookup(query)
+
+    if len(answer.Answer) != 1 {
+        t.Error("Expected one answers, got ", len(answer.Answer))
+        t.Fatal()
+    }
+
+    if len(answer.Ns) > 0 {
+        t.Error("Didn't expect any authority records")
+        t.Fatal()
+    }
+
+    rr := answer.Answer[0].(*dns.CNAME)
+    header := rr.Header()
+
+    // Verify the header is correct
+    if header.Name != "bar.disco.net." {
+        t.Error("Expected record with name bar.disco.net.: ", header.Name)
+        t.Fatal()
+    }
+    if header.Rrtype != dns.TypeCNAME {
+        t.Error("Expected record with type CNAME:", header.Rrtype)
+        t.Fatal()
+    }
+
+    // Verify the CNAME data is correct
+    if rr.Target != "baz.disco.net." {
+        t.Error("Expected CNAME target baz.disco.net.:", header.Rrtype)
+        t.Fatal()
+    }
+}
+
 func TestAnswerQuestionWildcardAAAANoMatch(t *testing.T) {
     resolver.etcdPrefix = "TestAnswerQuestionWildcardANoMatch/"
     client.Set("TestAnswerQuestionWildcardANoMatch/net/disco/bar/*/.AAAA", "::1", 0)
