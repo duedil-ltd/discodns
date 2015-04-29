@@ -15,6 +15,7 @@ import (
 
 type Resolver struct {
     etcd        *etcd.Client
+    cache       *EtcdRecordCache
     etcdPrefix  string
     defaultTtl  uint32
 }
@@ -29,6 +30,16 @@ type EtcdRecord struct {
 //  - Directory:    /foo/bar/.A/0 -> "value-0"
 //                  /foo/bar/.A/1 -> "value-1"
 func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
+
+    // Pull the value from the cache
+    cacheKey := r.etcdPrefix + key
+    if r.cache != nil {
+        cachedNodes, hit := r.cache.Get(cacheKey)
+        if hit {
+            nodes = cachedNodes
+            return
+        }
+    }
 
     counter := metrics.GetOrRegisterCounter("resolver.etcd.query_count", metrics.DefaultRegistry)
     error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
@@ -100,6 +111,11 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     }
 
     findKeys(response.Node, r.defaultTtl, true)
+
+    // Insert the records into the cache
+    if r.cache != nil {
+        r.cache.Set(cacheKey, nodes, time.Second * 5)
+    }
 
     return
 }
