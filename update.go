@@ -26,6 +26,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     rrsets := [][]dns.RR{req.Answer, req.Ns}
     msg = new(dns.Msg)
     msg.SetReply(req)
+    msg.Opcode = dns.OpcodeUpdate
 
     // dns update re-aporopriates DNS message blocks:
     // msg.Question: Zone info for whole request
