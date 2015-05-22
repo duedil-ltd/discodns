@@ -30,6 +30,8 @@ var (
         DefaultTtl          uint32      `short:"t" long:"default-ttl" description:"Default TTL to return on records without an explicit TTL" default:"300"`
         Accept              []string    `long:"accept" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
         Reject              []string    `long:"reject" description:"Limit DNS queries to a set of domain:[type,...] pairs"`
+        TsigSecret          []string    `short:"s" long:"tsig" description:"Transaction signature secret in the format zone:secret"`
+        TsigFreeZones       []string    `long:"unauth" description:"Zone names that can be updated without TSIG authentication"`
     }
 )
 
@@ -79,6 +81,26 @@ func main() {
         logger.Printf("Metric logging disabled")
     }
 
+    // Parse the tsig arguments, these are formatted as "zone:secret"
+    tsigSecret := map[string]string{}
+    for _, arg := range Options.TsigSecret {
+        components := strings.SplitN(arg, ":", 2)
+        if len(components) != 2 {
+            logger.Printf("Failed to parse TSIG argument")
+            continue
+        }
+        tsigSecret[dns.Fqdn(components[0])] = components[1]
+    }
+
+    // create a unique list of zone names that allow unauthenticated access
+    tsigFreeZones := make(map[string]struct{}, len(Options.TsigFreeZones))
+    for _, zone := range Options.TsigFreeZones {
+        if zone[len(zone)-1] != '.' {
+            zone = zone + "."
+        }
+        tsigFreeZones[zone] = struct{}{}
+    }
+
     // Start up the DNS resolver server
     server := &Server{
         addr: Options.ListenAddress,
@@ -87,6 +109,8 @@ func main() {
         rTimeout: time.Duration(5) * time.Second,
         wTimeout: time.Duration(5) * time.Second,
         defaultTtl: Options.DefaultTtl,
+        tsigSecret: tsigSecret,
+        tsigFreeZones: tsigFreeZones,
         queryFilterer: &QueryFilterer{acceptFilters: parseFilters(Options.Accept),
                                       rejectFilters: parseFilters(Options.Reject)}}
 
@@ -114,35 +138,6 @@ func debugMsg(v ...interface{}) {
 
         logger.Println(vars...)
     }
-}
-
-// parseFilters will convert a string into a Query Filter structure. The accepted
-// format for input is [domain]:[type,type,...]. For example...
-// 
-// - "domain:A,AAAA" # Match all A and AAAA queries within `domain`
-// - ":TXT" # Matches only TXT queries for any domain
-// - "domain:" # Matches any query within `domain`
-func parseFilters(filters []string) []QueryFilter {
-    parsedFilters := make([]QueryFilter, 0)
-    for _, filter := range filters {
-        components := strings.Split(filter, ":")
-        if len(components) != 2 {
-            logger.Printf("Expected only one colon ([domain]:[type,type...])")
-            continue
-        }
-
-        domain := dns.Fqdn(components[0])
-        types := strings.Split(components[1], ",")
-
-        if len(types) == 1 && len(types[0]) == 0 {
-            types = make([]string, 0)
-        }
-
-        debugMsg("Adding filter with domain '" + domain + "' and types '" + strings.Join(types, ",") + "'")
-        parsedFilters = append(parsedFilters, QueryFilter{domain, types})
-    }
-
-    return parsedFilters
 }
 
 func init() {

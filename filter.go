@@ -68,3 +68,32 @@ func (f *QueryFilterer) ShouldAcceptQuery(req *dns.Msg) bool {
 
     return accepted
 }
+
+// parseFilters will convert a string into a Query Filter structure. The accepted
+// format for input is [domain]:[type,type,...]. For example...
+// 
+// - "domain:A,AAAA" # Match all A and AAAA queries within `domain`
+// - ":TXT" # Matches only TXT queries for any domain
+// - "domain:" # Matches any query within `domain`
+func parseFilters(filters []string) []QueryFilter {
+    parsedFilters := make([]QueryFilter, 0)
+    for _, filter := range filters {
+        components := strings.Split(filter, ":")
+        if len(components) != 2 {
+            logger.Printf("Expected only one colon ([domain]:[type,type...])")
+            continue
+        }
+
+        domain := dns.Fqdn(components[0])
+        types := strings.Split(components[1], ",")
+
+        if len(types) == 1 && len(types[0]) == 0 {
+            types = make([]string, 0)
+        }
+
+        debugMsg("Adding filter with domain '" + domain + "' and types '" + strings.Join(types, ",") + "'")
+        parsedFilters = append(parsedFilters, QueryFilter{domain, types})
+    }
+
+    return parsedFilters
+}

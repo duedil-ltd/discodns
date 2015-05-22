@@ -1,12 +1,9 @@
 package main
 
 import (
-    "bytes"
-    "fmt"
     "github.com/coreos/go-etcd/etcd"
     "github.com/miekg/dns"
     "github.com/rcrowley/go-metrics"
-    "net"
     "strconv"
     "strings"
     "sync"
@@ -19,11 +16,6 @@ type Resolver struct {
     defaultTtl  uint32
 }
 
-type EtcdRecord struct {
-    node    *etcd.Node
-    ttl     uint32
-}
-
 // GetFromStorage looks up a key in etcd and returns a slice of nodes. It supports two storage structures;
 //  - File:         /foo/bar/.A -> "value"
 //  - Directory:    /foo/bar/.A/0 -> "value-0"
@@ -34,7 +26,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
     error_counter := metrics.GetOrRegisterCounter("resolver.etcd.query_error_count", metrics.DefaultRegistry)
 
     counter.Inc(1)
-    debugMsg("Querying etcd for " + key)
+    debugMsg("Querying etcd for /" + r.etcdPrefix + key)
 
     response, err := r.etcd.Get(r.etcdPrefix + key, true, true)
     if err != nil {
@@ -79,7 +71,7 @@ func (r *Resolver) GetFromStorage(key string) (nodes []*EtcdRecord, err error) {
                 return
             }
 
-            // If we don't have a TLL try and find one
+            // If we don't have a TTL try and find one
             if tryTtl {
                 ttlKey := node.Key + ".ttl"
 
@@ -151,7 +143,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
     var eChan chan error
 
     if q.Qclass == dns.ClassINET {
-        aChan, eChan = r.AnswerQuestion(q)
+        aChan, eChan = r.AnswerQuestion(q, true)
         answers, errors = gatherFromChannels(aChan, eChan)
     }
 
@@ -168,7 +160,7 @@ func (r *Resolver) Lookup(req *dns.Msg) (msg *dns.Msg) {
                     Qtype: q.Qtype,
                     Qclass: q.Qclass}
 
-                aChan, eChan = r.AnswerQuestion(question)
+                aChan, eChan = r.AnswerQuestion(question, true)
                 answers, errors = gatherFromChannels(aChan, eChan)
 
                 errored = errored || len(errors) > 0
@@ -239,7 +231,7 @@ func gatherFromChannels(rrsIn chan dns.RR, errsIn chan error) (rrs []dns.RR, err
 // the way. The function will return immediately, and spawn off a bunch of goroutines
 // to do the work, when using this function one should use a WaitGroup to know when all work
 // has been completed.
-func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors chan error) {
+func (r *Resolver) AnswerQuestion(q dns.Question, resolveAliases bool) (answers chan dns.RR, errors chan error) {
     answers = make(chan dns.RR)
     errors = make(chan error)
 
@@ -251,15 +243,15 @@ func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors c
 
     if q.Qtype == dns.TypeANY {
         wg := sync.WaitGroup{}
-        wg.Add(len(converters))
+        wg.Add(len(convertersToRR))
         go func(){
             wg.Wait()
             close(answers)
             close(errors)
         }()
-        for rrType, _ := range converters {
+        for rrType, _ := range convertersToRR {
             go func(rrType uint16) {
-                defer func() { recover() }()
+                defer recover()
                 defer wg.Done()
 
                 results, err := r.LookupAnswersForType(q.Name, rrType)
@@ -272,7 +264,7 @@ func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors c
                 }
             }(rrType)
         }
-    } else if _, ok := converters[q.Qtype]; ok {
+    } else if _, ok := convertersToRR[q.Qtype]; ok {
         go func() {
             defer func(){
                 close(answers)
@@ -286,7 +278,7 @@ func (r *Resolver) AnswerQuestion(q dns.Question) (answers chan dns.RR, errors c
                     for _, rr := range records {
                         answers <- rr
                     }
-                } else {
+                } else if resolveAliases {
                     cnames, err := r.LookupAnswersForType(q.Name, dns.TypeCNAME)
                     if err != nil {
                         errors <- err
@@ -331,7 +323,7 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     for i, node := range nodes {
 
         header := dns.RR_Header{Name: name, Class: dns.ClassINET, Rrtype: rrType, Ttl: node.ttl}
-        answer, err := converters[rrType](node.node, header)
+        answer, err := convertersToRR[rrType](node.node, header)
 
         if err != nil {
             debugMsg("Error converting type: ", err)
@@ -344,172 +336,55 @@ func (r *Resolver) LookupAnswersForType(name string, rrType uint16) (answers []d
     return
 }
 
-// nameToKey returns a string representing the etcd version of a domain, replacing dots with slashes
-// and reversing it (foo.net. -> /net/foo)
-func nameToKey(name string, suffix string) string {
-    segments := strings.Split(name, ".")
+// NameExists will return true if the given domain name exists and has any
+// resource records in the database. If an error occurs while querying for
+// data the function will return false and an error.
+func (r *Resolver) NameExists(name string) (exists bool, err error) {
 
-    var keyBuffer bytes.Buffer
-    for i := len(segments) - 1; i >= 0; i-- {
-        if len(segments[i]) > 0 {
-            keyBuffer.WriteString("/")
-            keyBuffer.WriteString(segments[i])
-        }
+    question := dns.Question{dns.Fqdn(name), dns.TypeANY, dns.ClassINET}
+    aChan, eChan := r.AnswerQuestion(question, true)
+    answers, errors := gatherFromChannels(aChan, eChan)
+
+    if len(errors) > 0 {
+        return false, errors[0]
     }
-
-    keyBuffer.WriteString(suffix)
-    return keyBuffer.String()
+    return len(answers) > 0, nil
 }
 
-// Map of conversion functions that turn individual etcd nodes into dns.RR answers
-var converters = map[uint16]func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+// RRSetExists returns true if RRs exist for the given name and type (value independent)
+func (r *Resolver) RRSetExists(name string, rrType uint16) (exists bool, err error) {
+    answers, err := r.LookupAnswersForType(dns.Fqdn(name), rrType)
+    if err != nil {
+        return false, err
+    }
 
-    dns.TypeA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+    return len(answers) > 0, nil
+}
 
-        ip := net.ParseIP(node.Value)
-        if ip == nil {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Failed to parse %s as IP Address", node.Value),
-                AttemptedType: dns.TypeA,
+// RRSetMatches checks that the set of records in the DNS for the given name
+// and type *exactly* match the given RRs: their data must match, and there must
+// be no more or less RRs
+func (r *Resolver) RRSetMatches(name string, rrType uint16, rrs []dns.RR) (matches bool, err error) {
+    answers, err := r.LookupAnswersForType(dns.Fqdn(name), rrType)
+    if err != nil {
+        return false, err
+    }
+    if len(answers) != len(rrs) {
+        return false, nil
+    }
+    matched := 0
+    // I'm sure theres a neater/faster way than comparing all to all, but meh
+    for _, rr := range rrs {
+        for _, answer := range answers {
+            // TTLS are explicitly excluded from comparison
+            cmp := dns.Copy(answer)
+            cmp.Header().Ttl = 0
+            // TODO(orls): is string() enough? is there any relevant info not in the string reprs?
+            if cmp.String() == rr.String() {
+                matched++
+                break
             }
-        } else if ip.To4() == nil {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Value %s isn't an IPv4 address", node.Value),
-                AttemptedType: dns.TypeA,
-            }
-        } else {
-            rr = &dns.A{header, ip}
         }
-
-        return
-    },
-
-    dns.TypeAAAA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-
-        ip := net.ParseIP(node.Value)
-        if ip == nil {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Failed to parse IP Address %s", node.Value),
-                AttemptedType: dns.TypeAAAA}
-        } else if ip.To16() == nil {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Value %s isn't an IPv6 address", node.Value),
-                AttemptedType: dns.TypeA}
-        } else {
-            rr = &dns.AAAA{header, ip}
-        }
-        return
-    },
-
-    dns.TypeTXT: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        rr = &dns.TXT{header, []string{node.Value}}
-        return
-    },
-
-    dns.TypeCNAME: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        rr = &dns.CNAME{header, dns.Fqdn(node.Value)}
-        return
-    },
-
-    dns.TypeNS: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        rr = &dns.NS{header, dns.Fqdn(node.Value)}
-        return
-    },
-
-    dns.TypePTR: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        labels, ok := dns.IsDomainName(node.Value)
-
-        if (ok && labels > 0) {
-            rr = &dns.PTR{header, dns.Fqdn(node.Value)}
-        } else {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Value '%s' isn't a valid domain name", node.Value),
-                AttemptedType: dns.TypePTR}
-        }
-        return
-    },
-
-    dns.TypeSRV: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        parts := strings.SplitN(node.Value, "\t", 4)
-
-        if len(parts) != 4 {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Value %s isn't valid for SRV", node.Value),
-                AttemptedType: dns.TypeSRV}
-        } else {
-
-            priority, err := strconv.ParseUint(parts[0], 10, 16)
-            if err != nil {
-                return nil, err
-            }
-
-            weight, err := strconv.ParseUint(parts[1], 10, 16)
-            if err != nil {
-                return nil, err
-            }
-
-            port, err := strconv.ParseUint(parts[2], 10, 16)
-            if err != nil {
-                return nil, err
-            }
-
-            target := dns.Fqdn(parts[3])
-
-            rr = &dns.SRV{
-                header,
-                uint16(priority),
-                uint16(weight),
-                uint16(port),
-                target}
-        }
-        return
-    },
-
-    dns.TypeSOA: func (node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
-        parts := strings.SplitN(node.Value, "\t", 6)
-
-        if len(parts) < 6 {
-            err = &NodeConversionError{
-                Node: node,
-                Message: fmt.Sprintf("Value %s isn't valid for SOA", node.Value),
-                AttemptedType: dns.TypeSOA}
-        } else {
-            refresh, err := strconv.ParseUint(parts[2], 10, 32)
-            if err != nil {
-                return nil, err
-            }
-
-            retry, err := strconv.ParseUint(parts[3], 10, 32)
-            if err != nil {
-                return nil, err
-            }
-
-            expire, err := strconv.ParseUint(parts[4], 10, 32)
-            if err != nil {
-                return nil, err
-            }
-
-            minttl, err := strconv.ParseUint(parts[5], 10, 32)
-            if err != nil {
-                return nil, err
-            }
-
-            rr = &dns.SOA{
-                Hdr:     header,
-                Ns:      dns.Fqdn(parts[0]),
-                Mbox:    dns.Fqdn(parts[1]),
-                Refresh: uint32(refresh),
-                Retry:   uint32(retry),
-                Expire:  uint32(expire),
-                Minttl:  uint32(minttl)}
-        }
-
-        return
-    },
+    }
+    return matched == len(rrs), nil
 }

@@ -1,6 +1,6 @@
 
 discodns
-======
+========
 
 [![Build Status](https://travis-ci.org/duedil-ltd/discodns.png?branch=master)](https://travis-ci.org/duedil-ltd/discodns)
 
@@ -18,7 +18,7 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 - Support for TTLs
     - Global default on all records
     - Individual TTL values for individual records
-- Runtime and application metrics are captured regularly for monitoring (stdout or grahite)
+- Runtime and application metrics are captured regularly for monitoring (stdout or graphite)
 - Incoming query filters
 
 #### Production Readyness

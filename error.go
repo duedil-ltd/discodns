@@ -14,7 +14,7 @@ type NodeConversionError struct {
 
 func (e *NodeConversionError) Error() string {
     return fmt.Sprintf(
-        "Unable to convert etc Node into a RR of type %d ('%s'): %s. Node details: %+v",
+        "Unable to convert etcd Node into a RR of type %d ('%s'): %s. Node details: %+v",
         e.AttemptedType,
         dns.TypeToString[e.AttemptedType],
         e.Message,
