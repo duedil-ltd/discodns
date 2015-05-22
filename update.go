@@ -38,7 +38,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
         for _, rr := range rrs {
             if dns.CompareDomainName(rr.Header().Name, zone) != dns.CountLabel(zone) {
                 debugMsg("Domain " + rr.Header().Name + " is not in the " + zone + " zone")
-                msg.SetRcode(req, dns.RcodeNotZone)
+                msg.Rcode = dns.RcodeNotZone
                 return
             }
         }
@@ -48,7 +48,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     defer func() {
         if r := recover(); r != nil {
             debugMsg("[PANIC] " + fmt.Sprint(r))
-            msg.SetRcode(req, dns.RcodeServerFailure)
+            msg.Rcode = dns.RcodeServerFailure
         }
     }()
 
@@ -64,7 +64,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     _, err := lock.WaitForAcquire(30)
     if err != nil {
         debugMsg("Failed to acquire or keep the update lock: ", err)
-        msg.SetRcode(req, dns.RcodeServerFailure)
+        msg.Rcode = dns.RcodeServerFailure
         return
     }
 
@@ -73,14 +73,14 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     prereqValidation := validatePrerequisites(req.Answer, u.resolver)
     if prereqValidation != dns.RcodeSuccess {
         debugMsg("Validation of prerequisites failed")
-        msg.SetRcode(req, prereqValidation)
+        msg.Rcode = prereqValidation
         return
     }
 
     updateValidation := validateUpdates(req.Ns, req.Question[0])
     if updateValidation != dns.RcodeSuccess {
         debugMsg("Validation of update instructions failed")
-        msg.SetRcode(req, updateValidation)
+        msg.Rcode = updateValidation
         return
     }
 
@@ -89,7 +89,7 @@ func (u *DynamicUpdateManager) Update(zone string, req *dns.Msg) (msg *dns.Msg) 
     // result in a partially updated zone.
     // TODO(tarnfeld): Figure out a way of rolling back changes, perhaps make
     // use of the etcd indexes?
-    msg.SetRcode(req, performUpdate(u.etcdPrefix, u.etcd, u.resolver, req.Question[0], req.Ns))
+    msg.Rcode = performUpdate(u.etcdPrefix, u.etcd, u.resolver, req.Question[0], req.Ns)
 
     return
 }
