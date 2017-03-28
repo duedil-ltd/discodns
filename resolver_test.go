@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	client   = etcd.NewClient([]string{"127.0.0.1:4001"})
+	client   = etcd.NewClient([]string{"http://127.0.0.1:2379"})
 	resolver = &Resolver{etcd: client}
 )
 

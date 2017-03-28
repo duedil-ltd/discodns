@@ -66,13 +66,13 @@ Why not ZooKeeper? The etcd API is much simpler for users to use, and it uses [R
 
 Another attractive quality about etcd is the ability to continue serving (albeit stale) read queries even when a consensus cannot be reached, allowing the cluster to enter a semi-failed state where it cannot accept writes, but it will serve reads. This kind of graceful service degradation is very useful for a read-heavy system, such as DNS.
 
-Currently, discodns is locked to etcd 0.4.6
+Currently, discodns has been tested against ETCD 3.1.2.
 
 ## Getting Started
 
 The discodns project is written in Go, and uses an extensive library ([miekg/dns](https://github.com/miekg/dns)) to provide the actual implementation of the DNS protocol.
 
-You'll need to compile from source, though a Makefile is provided to make this easier. Before starting, you'll need to ensure you have [Go](http://golang.org/) (1.2+) installed.
+You'll need to compile from source, though a Makefile is provided to make this easier. Before starting, you'll need to ensure you have [Go](http://golang.org/) (1.8+) installed.
 
 ### Building
 
