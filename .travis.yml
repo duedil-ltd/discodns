@@ -9,4 +9,4 @@ install:
   - "etcd-v3.1.2-linux-amd64/etcd -name travis &"
   - "sleep 5" # Wait for etcd to come up
 cache: apt
-script: "make get && make test"
+script: "curl http://127.0.0.1:4001 && make get && make test"
