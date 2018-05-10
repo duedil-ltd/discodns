@@ -434,6 +434,30 @@ var converters = map[uint16]func(node *etcd.Node, header dns.RR_Header) (rr dns.
 		return
 	},
 
+	dns.TypeMX: func(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
+		parts := strings.SplitN(node.Value, "\t", 2)
+
+		if len(parts) != 2 {
+			err = &NodeConversionError{
+				Node:          node,
+				Message:       fmt.Sprintf("Value %s isn't valid for MX", node.Value),
+				AttemptedType: dns.TypeMX}
+		} else {
+			preference, err := strconv.ParseUint(parts[0], 10, 16)
+			if err != nil {
+				return nil, err
+			}
+
+			target := dns.Fqdn(parts[1])
+
+			rr = &dns.MX{
+				header,
+				uint16(preference),
+				target}
+		}
+		return
+	},
+
 	dns.TypeSRV: func(node *etcd.Node, header dns.RR_Header) (rr dns.RR, err error) {
 		parts := strings.SplitN(node.Value, "\t", 4)
 

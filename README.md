@@ -11,6 +11,7 @@ An authoritative DNS nameserver that queries an [etcd](http://github.com/coreos/
 - Full support for a variety of resource records
     - Both IPv4 (`A`) and IPv6 (`AAAA`) addresses
     - `CNAME` alias records
+    - `MX` mail exchange records
     - Delegation via `NS` and `SOA` records
     - `SRV` and `PTR` for service discovery and reverse domain lookups
 - Multiple resource records of different types per domain (where valid)
